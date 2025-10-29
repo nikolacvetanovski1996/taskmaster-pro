@@ -52,7 +52,7 @@ describe('ProfileComponent', () => {
     fixture = TestBed.createComponent(ProfileComponent);
     component = fixture.componentInstance;
 
-    // allow Angular lifecycle to run (ngOnInit -> loadProfile will subscribe to our stub)
+    // allow Angular lifecycle to run (ngOnInit -> loadProfile will subscribe to the stub)
     fixture.detectChanges();
   });
 
@@ -68,7 +68,7 @@ describe('ProfileComponent', () => {
   });
 
   it('should load profile on init', () => {
-    // we stubbed getProfile to return initialProfile in beforeEach
+    // getProfile is stubbed to return initialProfile in beforeEach
     expect(authService.getProfile).toHaveBeenCalled();
     expect(component.profileForm.value.email).toEqual(initialProfile.email);
     expect(component.profileForm.value.firstName).toEqual(initialProfile.firstName);

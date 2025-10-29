@@ -46,13 +46,13 @@ namespace taskmaster_pro.Infrastructure.Persistence.SeedData
             if (userIds == null || userIds.Count == 0)
                 throw new InvalidOperationException("No users found in DB. Create at least one user before seeding.");
 
-            // Unique run tag so we can find the exact inserted rows after SaveChanges (solves DB-generated id problems)
+            // Unique run tag to locate the exact rows inserted by this run after SaveChanges — solves DB-generated ID issues
             var runTag = "seeder_" + Guid.NewGuid().ToString("N");
             var utcNow = DateTime.UtcNow;
 
             List<Order> orders = new();
 
-            // Orders: only seed if empty (or we wiped)
+            // Orders: only seed if empty (or when wiped)
             if (!await _db.Orders.AnyAsync())
             {
                 // Deterministic RNG for Bogus if you want same data each run
@@ -68,7 +68,7 @@ namespace taskmaster_pro.Infrastructure.Persistence.SeedData
             }
 
             // --- Read back the actual seeded Order IDs ---
-            // Use CreatedBy runTag to pick only the rows we just inserted.
+            // Use CreatedBy runTag to select only the rows inserted by this run.
             var seededOrderIds = await _db.Orders
                 .AsNoTracking()
                 .Where(o => o.CreatedBy == runTag)
@@ -90,7 +90,7 @@ namespace taskmaster_pro.Infrastructure.Persistence.SeedData
             if (seededOrderIds == null || seededOrderIds.Count == 0)
                 throw new InvalidOperationException("Unable to determine seeded Order IDs after inserting orders.");
 
-            // schedules: only seed if empty (or we wiped)
+            // schedules: only seed if empty (or when wiped)
             if (!await _db.Schedules.AnyAsync())
             {
                 // --- Generate Schedules using seededOrderIds ---

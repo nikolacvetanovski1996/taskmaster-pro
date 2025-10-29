@@ -32,8 +32,8 @@
                           .WithMessage("Column name is required.");
                 });
 
-            // Validate Order array: index inside bounds and dir correct
-            // We validate the list as a whole so we can check indexes against Columns.Count
+            // Validate Order array: ensure column indexes are within bounds and dir is correct
+            // Entire list is validated so indexes are checked against Columns.Count
             RuleFor(x => x.Order)
                 .Must((request, orderList) =>
                 {

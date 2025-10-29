@@ -93,7 +93,7 @@ export class UserListComponent implements OnInit {
       };
     });
     
-    // Build orderArray: DataTables expects `column` to be an index into the `columns` array we just built.
+    // Build orderArray: DataTables expects `column` to be an index into the `columns` array.
     let orderArray: { column: number; dir: "" | "asc" | "desc" }[] = [];
 
     if (this.sortColumn >= 0) {

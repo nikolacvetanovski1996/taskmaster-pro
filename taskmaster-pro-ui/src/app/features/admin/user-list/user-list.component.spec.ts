@@ -148,7 +148,7 @@ describe('UserListComponent', () => {
 
     expect(adminService.deleteUser).toHaveBeenCalledWith('1');
     expect(notification.show).toHaveBeenCalledWith('Could not delete user.', 'Close');
-    // on error we shouldn't reload page
+    // on error the page shouldn't be reloaded
     expect(adminService.getPagedUsers).not.toHaveBeenCalled();
   }));
 

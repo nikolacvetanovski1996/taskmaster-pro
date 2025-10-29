@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick, flushMicrotasks } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { CreateScheduleComponent } from './create-schedule.component';
 import { ReactiveFormsModule } from '@angular/forms';
@@ -10,7 +10,6 @@ import { NotificationService } from '../../../shared/services/notification.servi
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createScheduleMock, userMock } from '../../../shared/mock-data';
 import { AuthService } from '../../authentication/services/auth.service';
-import { NgSelectModule } from '@ng-select/ng-select';
 
 class MockScheduleService {
   create = jasmine.createSpy().and.returnValue(of({}));
@@ -125,31 +124,50 @@ describe('CreateScheduleComponent', () => {
     expect(scheduleService.create).not.toHaveBeenCalled();
   });
 
-  it('should call scheduleService.create and navigate on success', fakeAsync(() => {
-    component.scheduleForm.patchValue(createScheduleMock);
+    it('should call scheduleService.create and navigate on success', fakeAsync(() => {
+    // ensure the assignment validation resolves true so submit proceeds
+      spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(true));
 
-    component.isOrderValid = true;
+      // fill required fields from mock (ensure assignedTo exists in the form)
+      component.scheduleForm.patchValue({
+        ...createScheduleMock,
+        assignedTo: createScheduleMock.assignedToId ?? null
+      });
 
-    component.submit();
-    tick();
+      component.isOrderValid = true;
 
-    expect(scheduleService.create).toHaveBeenCalled();
-    expect(notification.show).toHaveBeenCalledWith('Schedule created!');
-    expect(router.navigate).toHaveBeenCalledWith(['/schedules']);
-  }));
+      component.submit();
+      // resolve awaited promise inside submit()
+      tick();
+      // flush any microtasks triggered by subscribe callbacks
+      flushMicrotasks?.();
 
-  it('should handle error on schedule creation', fakeAsync(() => {
-    // Force the service to throw an error
-    scheduleService.create.and.returnValue(throwError(() => new Error('Error')));
-    component.scheduleForm.patchValue(createScheduleMock);
+      expect(scheduleService.create).toHaveBeenCalled();
+      expect(notification.show).toHaveBeenCalledWith('Schedule created!');
+      expect(router.navigate).toHaveBeenCalledWith(['/schedules']);
+    }));
 
-    component.isOrderValid = true;
-    component.submit();
-    tick();
 
-    expect(notification.show).toHaveBeenCalledWith('Failed to create schedule', 'Close');
-    expect(component.isSubmitting).toBeFalse();
-  }));
+    it('should handle error on schedule creation', fakeAsync(() => {
+      // Force the service to throw an error
+      scheduleService.create.and.returnValue(throwError(() => new Error('Error')));
+      // stub validation so submit reaches the create() call
+      spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(true));
+
+      // fill required fields from mock (include assignedTo)
+      component.scheduleForm.patchValue({
+        ...createScheduleMock,
+        assignedTo: createScheduleMock.assignedToId ?? null
+      });
+
+      component.isOrderValid = true;
+      component.submit();
+      tick();
+      flushMicrotasks?.();
+
+      expect(notification.show).toHaveBeenCalledWith('Failed to create schedule', 'Close');
+      expect(component.isSubmitting).toBeFalse();
+    }));
 
   it('should navigate back on cancel', () => {
     component.cancel();
@@ -203,7 +221,7 @@ describe('CreateScheduleComponent', () => {
 
   it('should unsubscribe on destroy', () => {
     const destroySpy = jasmine.createSpyObj('destroy$', ['next', 'complete']);
-    // replace the private destroy$ subject with our spy object
+    // replace the private destroy$ subject with the spy object
     (component as any).destroy$ = destroySpy;
 
     component.ngOnDestroy();
@@ -257,27 +275,30 @@ describe('CreateScheduleComponent', () => {
     expect(errors).toBeNull();
   });
 
-  it('should call scheduleService.create with assignedToId when assignedTo is object', fakeAsync(() => {
-    const scheduleSvc = TestBed.inject(ScheduleService) as any;
-    scheduleSvc.create.and.returnValue(of({}));
+    it('should call scheduleService.create with assignedToId when assignedTo is object', fakeAsync(() => {
+      const scheduleSvc = TestBed.inject(ScheduleService) as any;
+      scheduleSvc.create.and.returnValue(of({}));
 
-    // ensure admin mode and that assignedTo control contains the user object
-    component.isAdmin = true;
-    // if control was disabled earlier, enable it so its value is included
-    if (component.assignedTo.disabled) {
-      component.assignedTo.enable({ emitEvent: false });
-    }
-    component.assignedTo.setValue(userMock);
+      // ensure admin mode and that assignedTo control contains the user object
+      component.isAdmin = true;
+      if (component.assignedTo.disabled) {
+        component.assignedTo.enable({ emitEvent: false });
+      }
+      component.assignedTo.setValue(userMock);
 
-    // fill other required fields from mock
-    component.scheduleForm.patchValue(createScheduleMock);
+      // stub validateAssignedTo to resolve true for the object's id (component.submit will still call validateAssignedTo but external async flakiness needs to be avoided)
+      spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(true));
 
-    component.isOrderValid = true;
-    component.submit();
-    tick();
+      // fill other required fields from mock
+      component.scheduleForm.patchValue(createScheduleMock);
 
-    expect(scheduleSvc.create).toHaveBeenCalled();
-    const dto = scheduleSvc.create.calls.mostRecent().args[0];
-    expect(dto.assignedToId).toBe(userMock.id);
-  }));
+      component.isOrderValid = true;
+      component.submit();
+      tick();
+      flushMicrotasks?.();
+
+      expect(scheduleSvc.create).toHaveBeenCalled();
+      const dto = scheduleSvc.create.calls.mostRecent().args[0];
+      expect(dto.assignedToId).toBe(userMock.id);
+    }));
 });

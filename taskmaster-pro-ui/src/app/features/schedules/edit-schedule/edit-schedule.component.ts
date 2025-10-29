@@ -1,6 +1,6 @@
-import { ChangeDetectorRef , Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
-import { Subject, Observable, of } from 'rxjs';
-import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, finalize, takeUntil } from 'rxjs/operators'
+import { ChangeDetectorRef , Component, OnInit, OnDestroy } from '@angular/core';
+import { Subject, Observable, of, firstValueFrom } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, takeUntil } from 'rxjs/operators'
 import { CommonModule } from '@angular/common';
 import { AbstractControl, ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
 import { Router, ActivatedRoute  } from '@angular/router';
@@ -156,8 +156,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
           take(1),
           catchError(() => of(null))
         ).subscribe(fullUser => {
-          console.log('EDIT: fetched fullUser for assignedId', assignedId, fullUser);
-
           if (!fullUser) {
             // Fallback - if API didn't return full user but schedule already had object
             if (assigned && typeof assigned !== 'string') {
@@ -258,15 +256,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   }
 
   async submit() {
-    // Force assignedTo validation
-    const assignedValid = await this.validateAssignedTo(this.assignedTo.value);
-    
-    if (!assignedValid) {
-      this.notification.show('Assigned To is invalid or not found.', 'Close');
-      this.editForm.markAllAsTouched();
-      return;
-    }
-
     // Prevent multiple submits
     if (this.editForm.invalid) {
       // Mark touched so mat-error appears
@@ -281,11 +270,46 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
     }
 
     // Extract assignedToId from assignedTo property
-    const assignedValue = this.editForm.value.assignedTo;
-    const assignedToId = this.isAdmin
-      ? (assignedValue && typeof assignedValue === 'object' ? assignedValue.id : assignedValue)
-      : this.currentUserId;
-  
+   let assignedValue = this.isAdmin
+    ? (this.editForm.value.assignedTo ?? this.selectedUser)
+    : this.currentUserId;
+
+    if (!assignedValue) {
+      this.editForm.get('assignedTo')?.setErrors({ required: true });
+      this.editForm.markAllAsTouched();
+      return;
+    }
+
+    // Normalize into an id string
+    const assignedId = typeof assignedValue === 'object'
+      ? (assignedValue as UserDto).id
+      : assignedValue.toString().trim();
+
+    if (!assignedId) {
+      this.editForm.get('assignedTo')?.setErrors({ required: true });
+      this.editForm.markAllAsTouched();
+      return;
+    }
+
+    // Validate assigned user exists (async)
+    const ok = await this.validateAssignedTo(assignedId);
+    if (!ok) {
+      this.notification.show('Assigned To is invalid or not found.', 'Close');
+      // validateAssignedTo already set the control error
+      this.editForm.markAllAsTouched();
+      return;
+    }
+
+    this._doSubmit(assignedId);
+  }
+
+  private _doSubmit(assignedToId: string | null) {
+    // Guard again just in case
+    if (!assignedToId) {
+      this.notification.show('Assigned user missing.', 'Close');
+      return;
+    }
+
     this.isSubmitting = true;
     const dto: UpdateScheduleDto = {
       id:             this.scheduleId,
@@ -294,7 +318,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
       scheduledStart: toIsoMidnight(this.editForm.value.scheduledStart),
       scheduledEnd:   toIsoMidnight(this.editForm.value.scheduledEnd),
       description:    this.editForm.value.description,
-      assignedToId:     assignedToId
+      assignedToId:   assignedToId
     };
 
     this.scheduleService.update(this.scheduleId, dto).subscribe({
@@ -375,26 +399,31 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   }
 
   // Validate single Assigned To on-demand (called after paste or explicit action)
-  validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
-    return new Promise(resolve => {
-      let id = '';
-      if (!val) { resolve(false); return; }
-      if (typeof val === 'string') id = val.trim();
-      else id = (val as UserDto).id;
-      if (!id) { resolve(false); return; }
+  async validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
+    let id = '';
+    if (!val) return false;
+    if (typeof val === 'string') id = val.trim();
+    else id = (val as UserDto).id;
 
-      this.validatingAssigned = true;
-      this.userService.exists(id).pipe(
-        takeUntil(this.destroy$),
-        catchError(() => of(false)),
-        finalize(() => this.validatingAssigned = false)
-      ).subscribe(exists => {
-        const ctrl = this.editForm.get('assignedTo');
-        if (!exists) ctrl?.setErrors({ notFound: true });
-        else ctrl?.updateValueAndValidity({ onlySelf: true });
-        resolve(exists);
-      });
-    });
+    if (!id) return false;
+
+    this.validatingAssigned = true;
+    try {
+      const exists = await firstValueFrom(
+        this.userService.exists(id).pipe(
+          catchError(() => of(false))
+        )
+      );
+      const ctrl = this.editForm.get('assignedTo');
+      if (!exists) ctrl?.setErrors({ notFound: true });
+      else {
+        if (ctrl?.hasError('notFound')) ctrl.updateValueAndValidity({ onlySelf: true });
+      }
+
+      return exists;
+    } finally {
+      this.validatingAssigned = false;
+    }
   }
 
   // Optional Paste helper (permission required on some browsers). Graceful fallback to notification.

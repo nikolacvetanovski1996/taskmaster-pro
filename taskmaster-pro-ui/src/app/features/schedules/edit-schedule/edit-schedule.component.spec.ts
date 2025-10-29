@@ -297,30 +297,40 @@ describe('EditScheduleComponent', () => {
     expect(endErrors?.['endBeforeStart']).toBeTrue();
   });
 
-  it('submit shows notification when assignedTo is invalid', fakeAsync(() => {
-    // make assigned validation fail
-    spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(false));
+    it('submit shows notification when assignedTo is invalid', fakeAsync(() => {
+      // make assigned validation fail
+      spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(false));
 
-    // ensure form is valid so submit progresses to assignedTo check
-    component.isOrderValid = true;
-    component.editForm.patchValue({
-      orderId: updateScheduleMock.orderId ?? 'order1',
-      title: 'Valid title',
-      scheduledStart: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      scheduledEnd: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      description: 'desc',
-      assignedTo: userMock.id
-    });
+      // ensure form is valid so submit progresses to assignedTo check
+      component.isOrderValid = true;
+      component.editForm.patchValue({
+        orderId: updateScheduleMock.orderId ?? 'order1',
+        title: 'Valid title',
+        scheduledStart: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        scheduledEnd: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        description: 'desc',
+        assignedTo: userMock.id
+      });
 
-    component.submit();
-    tick(); // resolve promise microtasks
-    flushMicrotasks();
+      // clear any lingering validation errors so the form doesn't block prematurely
+      component.editForm.markAllAsTouched();
+      ['orderId', 'title', 'scheduledStart', 'scheduledEnd', 'description', 'assignedTo'].forEach(k => {
+        const ctrl = component.editForm.get(k as any);
+        if (ctrl) ctrl.setErrors(null);
+      });
+      component.editForm.updateValueAndValidity();
 
-    // notification shown and no update call
-    expect((TestBed.inject(NotificationService) as any).show).toHaveBeenCalledWith('Assigned To is invalid or not found.', 'Close');
-    expect(TestBed.inject(ScheduleService).update).not.toHaveBeenCalled();
-  }));
+      component.submit();
+      // resolve awaited promise inside submit
+      tick();
+      // flush any microtasks triggered by notifications/observables
+      flushMicrotasks?.();
 
+      // notification shown and no update call
+      expect((TestBed.inject(NotificationService) as any).show)
+        .toHaveBeenCalledWith('Assigned To is invalid or not found.', 'Close');
+      expect(TestBed.inject(ScheduleService).update).not.toHaveBeenCalled();
+    }));
 
   it('non-admin submit uses currentUserId as assignedToId', fakeAsync(() => {
     // ensure current auth is non-admin (default mock) and getCurrentUser returns userMock
@@ -353,7 +363,7 @@ describe('EditScheduleComponent', () => {
     // make assigned validation pass
     spyOn(component, 'validateAssignedTo').and.returnValue(Promise.resolve(true));
 
-    // ensure we control the update spy on the injected service
+    // ensure the update spy on the injected service is under control
     const scheduleSvc = TestBed.inject(ScheduleService) as any;
     scheduleSvc.update = jasmine.createSpy('update').and.returnValue(of({}));
 
@@ -378,7 +388,7 @@ describe('EditScheduleComponent', () => {
       assignedTo: userMock.id
     });
 
-    // **Force-clear any lingering errors so form.valid becomes true** (we're not testing validators here)
+    // **Force-clear any lingering errors so form.valid becomes true** (validators don't need to be tested here)
     ['orderId', 'title', 'scheduledStart', 'scheduledEnd', 'description', 'assignedTo'].forEach(k => {
       const ctrl = component.editForm.get(k as any);
       if (ctrl) ctrl.setErrors(null);

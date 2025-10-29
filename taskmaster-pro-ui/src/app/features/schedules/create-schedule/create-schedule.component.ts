@@ -1,6 +1,6 @@
   import { ChangeDetectorRef , Component, OnInit } from '@angular/core';
-  import { Subject, Observable, of } from 'rxjs';
-  import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, finalize, takeUntil } from 'rxjs/operators'
+  import { Subject, Observable, of, firstValueFrom } from 'rxjs';
+  import { debounceTime, distinctUntilChanged, switchMap, catchError, tap, takeUntil } from 'rxjs/operators'
   import { CommonModule } from '@angular/common';
   import { AbstractControl, ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
   import { Router, ActivatedRoute  } from '@angular/router';
@@ -221,7 +221,8 @@
       this.destroy$.complete();
     }
 
-    submit() {
+    async submit() {
+       // Prevent multiple submits
       if (this.scheduleForm.invalid) {
         // Mark touched so mat-error appears
         this.scheduleForm.markAllAsTouched();
@@ -234,54 +235,36 @@
         return;
       }
 
-      // ADMIN: assignedTo must be validated (can be object or string)
-      if (this.isAdmin) {
-        // Extract assignedToId from assignedTo property
-        const assignedValue = this.scheduleForm.value.assignedTo;
+      // Extract assignedToId from assignedTo property
+      let assignedValue = this.isAdmin
+        ? this.scheduleForm.value.assignedTo ?? this.selectedUser
+        : this.currentUserId;
 
-        if (!assignedValue) {
-          this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
-          this.scheduleForm.markAllAsTouched();
-          return;
-        }
-
-        // If control holds an object -> take its id and proceed
-        if (typeof assignedValue === 'object' && (assignedValue as any).id) {
-          const id = (assignedValue as any).id;
-          this._doSubmit(id);
-          return;
-        }
-
-        // If control holds a string (user typed something), verify existence via API
-        const candidateId = assignedValue?.toString().trim();
-        if (!candidateId) {
-          this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
-          this.scheduleForm.markAllAsTouched();
-          return;
-        }
-
-        // Run server check and only proceed when known
-        this.validatingAssigned = true;
-        this.userService.exists(candidateId).pipe(
-          take(1),
-          finalize(() => this.validatingAssigned = false)
-        ).subscribe(exists => {
-          if (!exists) {
-            this.scheduleForm.get('assignedTo')?.setErrors({ notFound: true });
-            this.scheduleForm.markAllAsTouched();
-            return;
-          }
-          // exists -> submit using the id string
-          this._doSubmit(candidateId);
-        });
-
-        // Important: return now because async check will continue and call _doSubmit later
+      if (!assignedValue) {
+        this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
+        this.scheduleForm.markAllAsTouched();
         return;
       }
 
-      // NON-ADMIN: assignedTo is current user
-      const assignedToId = this.currentUserId;
-      this._doSubmit(assignedToId);
+      // Normalize into an id string
+      const assignedId = typeof assignedValue === 'object'
+        ? assignedValue.id
+        : assignedValue.toString().trim();
+
+      if (!assignedId) {
+        this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
+        this.scheduleForm.markAllAsTouched();
+        return;
+      }
+
+      // Validate assigned user exists (async)
+      const ok = await this.validateAssignedTo(assignedId);
+      if (!ok) {
+        this.scheduleForm.markAllAsTouched();
+        return;
+      }
+
+      this._doSubmit(assignedId);
     }
 
     private _doSubmit(assignedToId: string | null) {
@@ -372,26 +355,31 @@
     }
 
     // Validate single Assigned To on-demand (called after paste or explicit action)
-    validateAssignedTo(val: string | UserDto | null) {
+    async validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
       let id = '';
-      if (!val) return;
+      if (!val) return false;
       if (typeof val === 'string') id = val.trim();
       else id = (val as UserDto).id;
 
-      if (!id) return;
+      if (!id) return false;
 
       this.validatingAssigned = true;
-      this.userService.exists(id).pipe(
-        takeUntil(this.destroy$),
-        catchError(() => of(false)),
-        finalize(() => this.validatingAssigned = false)
-      ).subscribe(exists => {
+      try {
+        const exists = await firstValueFrom(
+          this.userService.exists(id).pipe(
+            catchError(() => of(false))
+          )
+        );
         const ctrl = this.scheduleForm.get('assignedTo');
         if (!exists) ctrl?.setErrors({ notFound: true });
         else {
           if (ctrl?.hasError('notFound')) ctrl.updateValueAndValidity({ onlySelf: true });
         }
-      });
+
+        return exists;
+      } finally {
+        this.validatingAssigned = false;
+      }
     }
 
     // Optional Paste helper (permission required on some browsers). Graceful fallback to notification.

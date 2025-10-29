@@ -62,8 +62,8 @@ namespace Features.Schedules.Commands.CreateSchedule
                 var assignedUser = await _userService.GetUserByIdAsync(Guid.Parse(schedule.AssignedToId));
                 if (assignedUser != null)
                 {
-                    // In a real-world application, we would send an actual email here.
-                    // For portfolio/demo purposes, we only log to the console.
+                    // In a real-world application, an actual email would be sent here. 
+                    // For my portfolio/demo purposes, I only log the intended sending to the console.
                     Console.WriteLine($"[Portfolio] Email would be sent to {assignedUser.Email} with schedule: {schedule.Title}, start: {schedule.ScheduledStart}, end: {schedule.ScheduledEnd}");
                 }
             }
