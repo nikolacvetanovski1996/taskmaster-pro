@@ -1,6 +1,6 @@
-import { ChangeDetectorRef , Component, OnInit, OnDestroy } from '@angular/core';
-import { Subject, Observable, of, firstValueFrom } from 'rxjs';
-import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, takeUntil } from 'rxjs/operators'
+import { ChangeDetectorRef , Component, OnInit, OnDestroy, NgZone } from '@angular/core';
+import { Subject, Observable, of } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, finalize, takeUntil } from 'rxjs/operators'
 import { CommonModule } from '@angular/common';
 import { AbstractControl, ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
 import { Router, ActivatedRoute  } from '@angular/router';
@@ -32,6 +32,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   isSubmitting = false;
   scheduleId!: string;
   private destroy$ = new Subject<void>();
+  private pointerSubmitInProgress = false;
 
   // Typeahead/observables
   orderSuggestions$: Observable<any[]> = of([]);
@@ -66,7 +67,8 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
     private userService: UserService,
     private router: Router,
     private route: ActivatedRoute,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -81,7 +83,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
       }, { validators: this.endAfterStartValidator(this.nextMidnight) });
 
     // Server-side autocomplete for users: debounce + minimum lengthes
-    // Server-side autocomplete for users: debounce + minimum length and update userList (subscribe so it actually runs)
     this.userTypeahead$.pipe(
       takeUntil(this.destroy$),
       debounceTime(300),
@@ -98,10 +99,10 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         );
       })
     ).subscribe(list => {
-      // cache returned users
+      // Cache returned users
       list.forEach(u => this.userCache.set(u.id, u));
 
-      // merge selectedUser only when it matches typed input
+      // Include currently selected user when it matches typed text
       const typed = this.assignedTo.value;
       let merged = [...list];
       if (this.selectedUser && typeof typed === 'string' &&
@@ -109,19 +110,19 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         merged.unshift(this.selectedUser);
       }
 
-      // remove duplicates by id and update list shown by ng-select
+      // Dedupe results and update ng-select list
       this.userList = Array.from(new Map(merged.map(u => [u.id, u])).values());
       this.cdr.detectChanges();
     });
 
-    // watch control changes and push typed strings into the typeahead subject
+    // Watch control changes and push typed strings into the typeahead subject
     this.assignedTo.valueChanges
       .pipe(takeUntil(this.destroy$))
       .subscribe(v => {
         if (typeof v === 'string') {
           this.userTypeahead$.next(v);
         } else if (v && typeof v === 'object' && (v as UserDto).id) {
-          // if the control contains a full user object (selected), cache it
+          // If the control contains a full user object (selected), cache it
           const u = v as UserDto;
           this.userCache.set(u.id, u);
         }
@@ -156,6 +157,8 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
           take(1),
           catchError(() => of(null))
         ).subscribe(fullUser => {
+          console.log('EDIT: fetched fullUser for assignedId', assignedId, fullUser);
+
           if (!fullUser) {
             // Fallback - if API didn't return full user but schedule already had object
             if (assigned && typeof assigned !== 'string') {
@@ -256,6 +259,18 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   }
 
   async submit() {
+    console.debug('submit:start', { time: Date.now(), isSubmitting: this.isSubmitting, formStatus: (this as any).scheduleForm?.status || (this as any).editForm?.status, pending: (this as any).scheduleForm?.pending || (this as any).editForm?.pending, validatingAssigned: this.validatingAssigned, validatingOrder: this.validatingOrder });
+    this.cdr.detectChanges();
+
+    // Force assignedTo validation
+    const assignedValid = await this.validateAssignedTo(this.assignedTo.value);
+    
+    if (!assignedValid) {
+      this.notification.show('Assigned To is invalid or not found.', 'Close');
+      this.editForm.markAllAsTouched();
+      return;
+    }
+
     // Prevent multiple submits
     if (this.editForm.invalid) {
       // Mark touched so mat-error appears
@@ -270,46 +285,11 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
     }
 
     // Extract assignedToId from assignedTo property
-   let assignedValue = this.isAdmin
-    ? (this.editForm.value.assignedTo ?? this.selectedUser)
-    : this.currentUserId;
-
-    if (!assignedValue) {
-      this.editForm.get('assignedTo')?.setErrors({ required: true });
-      this.editForm.markAllAsTouched();
-      return;
-    }
-
-    // Normalize into an id string
-    const assignedId = typeof assignedValue === 'object'
-      ? (assignedValue as UserDto).id
-      : assignedValue.toString().trim();
-
-    if (!assignedId) {
-      this.editForm.get('assignedTo')?.setErrors({ required: true });
-      this.editForm.markAllAsTouched();
-      return;
-    }
-
-    // Validate assigned user exists (async)
-    const ok = await this.validateAssignedTo(assignedId);
-    if (!ok) {
-      this.notification.show('Assigned To is invalid or not found.', 'Close');
-      // validateAssignedTo already set the control error
-      this.editForm.markAllAsTouched();
-      return;
-    }
-
-    this._doSubmit(assignedId);
-  }
-
-  private _doSubmit(assignedToId: string | null) {
-    // Guard again just in case
-    if (!assignedToId) {
-      this.notification.show('Assigned user missing.', 'Close');
-      return;
-    }
-
+    const assignedValue = this.editForm.value.assignedTo;
+    const assignedToId = this.isAdmin
+      ? (assignedValue && typeof assignedValue === 'object' ? assignedValue.id : assignedValue)
+      : this.currentUserId;
+  
     this.isSubmitting = true;
     const dto: UpdateScheduleDto = {
       id:             this.scheduleId,
@@ -318,7 +298,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
       scheduledStart: toIsoMidnight(this.editForm.value.scheduledStart),
       scheduledEnd:   toIsoMidnight(this.editForm.value.scheduledEnd),
       description:    this.editForm.value.description,
-      assignedToId:   assignedToId
+      assignedToId:     assignedToId
     };
 
     this.scheduleService.update(this.scheduleId, dto).subscribe({
@@ -399,31 +379,33 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   }
 
   // Validate single Assigned To on-demand (called after paste or explicit action)
-  async validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
-    let id = '';
-    if (!val) return false;
-    if (typeof val === 'string') id = val.trim();
-    else id = (val as UserDto).id;
+  validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
+    console.debug('validateAssignedTo:start', { val, time: Date.now() });
+    const __validateStart = performance.now();
 
-    if (!id) return false;
+    return new Promise(resolve => {
+      let id = '';
+      if (!val) { resolve(false); return; }
+      if (typeof val === 'string') id = val.trim();
+      else id = (val as UserDto).id;
+      if (!id) { resolve(false); return; }
 
-    this.validatingAssigned = true;
-    try {
-      const exists = await firstValueFrom(
-        this.userService.exists(id).pipe(
-          catchError(() => of(false))
-        )
-      );
-      const ctrl = this.editForm.get('assignedTo');
-      if (!exists) ctrl?.setErrors({ notFound: true });
-      else {
-        if (ctrl?.hasError('notFound')) ctrl.updateValueAndValidity({ onlySelf: true });
-      }
-
-      return exists;
-    } finally {
-      this.validatingAssigned = false;
-    }
+      this.validatingAssigned = true;
+      this.userService.existsCached(id).pipe(
+        takeUntil(this.destroy$),
+        catchError(() => of(false)),
+        finalize(() => {
+          this.validatingAssigned = false;
+          console.debug('validateAssignedTo:done', { val, time: Date.now(), tookMs: Math.round(performance.now() - __validateStart) });
+          this.cdr.detectChanges();
+        })
+      ).subscribe(exists => {
+        const ctrl = this.editForm.get('assignedTo');
+        if (!exists) ctrl?.setErrors({ notFound: true });
+        else ctrl?.updateValueAndValidity({ onlySelf: true });
+        resolve(exists);
+      });
+    });
   }
 
   // Optional Paste helper (permission required on some browsers). Graceful fallback to notification.
@@ -487,6 +469,79 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
     const d = new Date(date);
     d.setDate(d.getDate() + 1);
     return d;
+  }
+
+  // Ensure ng-select internal handlers finished (microtask + macrotask)
+  private async waitForNgSelectFinalize(): Promise<void> {
+    await Promise.resolve();
+    await new Promise(res => setTimeout(res, 0));
+  }
+
+  // Wait until control.status !== 'PENDING' or timeout
+  private async waitUntilControlStable(control: AbstractControl | null, timeoutMs = 5000): Promise<'stable' | 'timeout'> {
+    if (!control) return 'stable';
+    if (control.status !== 'PENDING') return 'stable';
+    const start = Date.now();
+    return new Promise(resolve => {
+      const sub = (control.statusChanges as any)?.subscribe?.((status: string) => {
+        if (status !== 'PENDING') {
+          sub?.unsubscribe?.();
+          return resolve('stable');
+        }
+        if (Date.now() - start > timeoutMs) {
+          sub?.unsubscribe?.();
+          return resolve('timeout');
+        }
+      });
+      // fallback poll
+      const poll = () => {
+        if (control.status !== 'PENDING') { sub?.unsubscribe?.(); return resolve('stable'); }
+        if (Date.now() - start > timeoutMs) { sub?.unsubscribe?.(); return resolve('timeout'); }
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
+  }
+
+  // A pointerup handler to coordinate validation and submission
+  async onSavePointerUp(ev?: PointerEvent) {
+    // Prevent double triggering
+    if (this.pointerSubmitInProgress || this.isSubmitting) {
+      if (ev) ev.preventDefault();
+      return;
+    }
+    this.pointerSubmitInProgress = true;
+
+    try {
+      // Ensure any ng-select blur/selection handlers run first
+      await this.waitForNgSelectFinalize();
+
+      // Allow Angular zone to pick up changes before proceeding
+      await this.ngZone.run(async () => {
+        this.cdr.detectChanges();
+      });
+
+      // Wait for async validators to finish on assignedTo and orderId
+      const assignedCtrl = this.assignedTo;
+      const orderCtrl = this.orderId;
+
+      const [assignedStable, orderStable] = await Promise.all([
+        this.waitUntilControlStable(assignedCtrl, 5000),
+        this.waitUntilControlStable(orderCtrl, 5000)
+      ]);
+
+      if (assignedStable === 'timeout' || orderStable === 'timeout') {
+        this.notification.show('Validation timed out — try again.', 'Close');
+        return;
+      }
+
+      // Finally, call submit if available
+      if (typeof (this as any).submit === 'function') {
+        await (this as any).submit();
+      }
+    } finally {
+      this.pointerSubmitInProgress = false;
+    }
   }
 
   // Getters for form controls
