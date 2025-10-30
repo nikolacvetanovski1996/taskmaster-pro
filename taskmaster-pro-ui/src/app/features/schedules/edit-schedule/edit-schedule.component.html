@@ -28,14 +28,14 @@
           Please type at least {{ searchMinLength }} characters to search.
         </mat-hint>
 
-        <mat-hint *ngIf="validatingOrder">
+        <mat-hint>
           <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
           Checking order…
         </mat-hint>
         <mat-error *ngIf="editForm.get('orderId')?.hasError('required')">
           Order ID is required
         </mat-error>
-        <mat-error *ngIf="!validatingOrder && editForm.get('orderId')?.hasError('notFound')">
+        <mat-error *ngIf="editForm.get('orderId')?.hasError('notFound')">
           Order not found
         </mat-error>
 
