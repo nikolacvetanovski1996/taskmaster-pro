@@ -160,9 +160,9 @@
       <div class="form-actions">
         <button
           mat-raised-button
-          color="primary"
+          color="primary" 
           type="button"
-          [disabled]="isSubmitting || validatingAssigned || validatingOrder || !editForm.valid"
+          [disabled]="isSubmitting || validatingAssigned"
           (pointerup)="onSavePointerUp($event)"
         >
           {{ isSubmitting ? 'Saving changes…' : 'Save changes' }}

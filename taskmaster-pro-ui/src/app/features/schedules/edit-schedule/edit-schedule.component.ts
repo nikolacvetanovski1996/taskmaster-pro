@@ -38,7 +38,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   orderSuggestions$: Observable<any[]> = of([]);
   userTypeahead$ = new Subject<string>();
   userList: UserDto[] = [];
-  validatingOrder = false;
   isOrderValid = false;
   validatingAssigned = false;
 
@@ -160,8 +159,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
           take(1),
           catchError(() => of(null))
         ).subscribe(fullUser => {
-          console.log('EDIT: fetched fullUser for assignedId', assignedId, fullUser);
-
           if (!fullUser) {
             // Fallback - if API didn't return full user but schedule already had object
             if (assigned && typeof assigned !== 'string') {
@@ -224,10 +221,8 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         tap(val => {
           // Reset validation display until proven
           this.isOrderValid = false;
-          this.validatingOrder = true;             // <-- Show spinner/hint while checking
           if (!val || val.toString().trim().length === 0) {
             this.editForm.get('orderId')?.setErrors({ required: true });
-            this.validatingOrder = false;         // Stop validating if empty
           }
         }),
         switchMap(val => {
@@ -239,10 +234,8 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
       ).subscribe(result => {
         if (result === null) {
           // Nothing to do
-          this.validatingOrder = false;
           return;
         }
-        this.validatingOrder = false;
         if (result === true) {
           this.isOrderValid = true;
           // Clear notFound error if any
@@ -262,7 +255,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   }
 
   async submit() {
-    console.debug('submit:start', { time: Date.now(), isSubmitting: this.isSubmitting, formStatus: (this as any).scheduleForm?.status || (this as any).editForm?.status, pending: (this as any).scheduleForm?.pending || (this as any).editForm?.pending, validatingAssigned: this.validatingAssigned, validatingOrder: this.validatingOrder });
     this.cdr.detectChanges();
 
     // Force assignedTo validation
@@ -329,12 +321,10 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   // Validate single Order ID on-demand (called after paste or explicit action)
   validateOrderId(id: string) {
     if (!id) return;
-    this.validatingOrder = true;
     this.orderService.exists(id).pipe(
       takeUntil(this.destroy$),
       catchError(() => of(false))
     ).subscribe(exists => {
-      this.validatingOrder = false;
       this.isOrderValid = !!exists;
       if (!exists) {
         this.editForm.get('orderId')?.setErrors({ notFound: true });
@@ -383,9 +373,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
 
   // Validate single Assigned To on-demand (called after paste or explicit action)
   validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
-    console.debug('validateAssignedTo:start', { val, time: Date.now() });
-    const __validateStart = performance.now();
-
     return new Promise(resolve => {
       let id = '';
       if (!val) { resolve(false); return; }
@@ -399,7 +386,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         catchError(() => of(false)),
         finalize(() => {
           this.validatingAssigned = false;
-          console.debug('validateAssignedTo:done', { val, time: Date.now(), tookMs: Math.round(performance.now() - __validateStart) });
           this.cdr.detectChanges();
         })
       ).subscribe(exists => {
