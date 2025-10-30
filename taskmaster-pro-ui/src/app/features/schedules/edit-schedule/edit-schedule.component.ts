@@ -35,7 +35,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   private pointerSubmitInProgress = false;
 
   // Typeahead/observables
-  orderSuggestions$: Observable<any[]> = of([]);
   userTypeahead$ = new Subject<string>();
   userList: UserDto[] = [];
   isOrderValid = false;
@@ -43,7 +42,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
 
   // Typeahead/search config
   searchMinLength = 3;
-  searchTooShortOrder = false;
   searchTooShortUser  = false;
 
   // Clipboard support detection
@@ -143,6 +141,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         })
       ).subscribe(schedule => {
         this.editForm.patchValue(schedule);
+        this.validateOrderId(this.editForm.get('orderId')?.value);
 
         // Normalize: get assigned id whether `assignedTo` is string or object
         const assigned = schedule.assignedTo;
@@ -212,40 +211,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
         this.orderId.setValue(q);
         this.validateOrderId(q);
       }
-
-      // Validate on pause/blur-ish behavior: when value stabilizes, check existence
-      this.orderId.valueChanges.pipe(
-        takeUntil(this.destroy$),
-        debounceTime(700),
-        distinctUntilChanged(),
-        tap(val => {
-          // Reset validation display until proven
-          this.isOrderValid = false;
-          if (!val || val.toString().trim().length === 0) {
-            this.editForm.get('orderId')?.setErrors({ required: true });
-          }
-        }),
-        switchMap(val => {
-          if (!val || val.toString().trim().length === 0) return of(null);
-          return this.orderService.exists(val.toString()).pipe(
-            catchError(() => of(false))
-          );
-        })
-      ).subscribe(result => {
-        if (result === null) {
-          // Nothing to do
-          return;
-        }
-        if (result === true) {
-          this.isOrderValid = true;
-          // Clear notFound error if any
-          const ctrl = this.editForm.get('orderId');
-          if (ctrl?.hasError('notFound')) ctrl.setErrors(null);
-        } else {
-          this.isOrderValid = false;
-          this.editForm.get('orderId')?.setErrors({ notFound: true });
-        }
-      });
     });
   }
 
@@ -310,12 +275,6 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
 
   cancel() {
     this.router.navigate(['/schedules']);
-  }
-
-  // Called when the user selects an autocomplete option for Order ID
-  onOrderSelected(orderId: string) {
-    this.orderId.setValue(orderId);
-    this.validateOrderId(orderId);
   }
 
   // Validate single Order ID on-demand (called after paste or explicit action)

@@ -8,44 +8,13 @@
           matInput
           formControlName="orderId"
           placeholder="Order UUID"
-          [matAutocomplete]="orderAuto"
-          (blur)="validateOrderId(orderId.value)" />
-
-        <!-- paste helper -->
-        <button
-          mat-icon-button
-          matSuffix
-          *ngIf="clipboardSupported"
-          type="button"
-          aria-label="Paste order id"
-          (click)="pasteFromClipboard()"
-          title="Paste from clipboard"
-        >
-          <mat-icon>content_paste</mat-icon>
-        </button>
-
-        <mat-hint *ngIf="searchTooShortOrder">
-          Please type at least {{ searchMinLength }} characters to search.
-        </mat-hint>
-
-        <mat-hint>
-          <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
-          Checking order…
-        </mat-hint>
+          readonly />
         <mat-error *ngIf="editForm.get('orderId')?.hasError('required')">
           Order ID is required
         </mat-error>
         <mat-error *ngIf="editForm.get('orderId')?.hasError('notFound')">
           Order not found
         </mat-error>
-
-        <mat-autocomplete
-          #orderAuto="matAutocomplete"
-          (optionSelected)="onOrderSelected($event.option.value)">
-          <mat-option *ngFor="let o of orderSuggestions$ | async" [value]="o.id">
-            {{ o.id }} — {{ o.customerName || o.title || o.userEmail }}
-          </mat-option>
-        </mat-autocomplete>
       </mat-form-field>
 
       <mat-form-field appearance="fill" class="full-width">
