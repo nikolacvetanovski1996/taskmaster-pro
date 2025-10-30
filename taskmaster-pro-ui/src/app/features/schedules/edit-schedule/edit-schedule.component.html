@@ -1,174 +1,180 @@
 <mat-card class="edit-form-card">
   <mat-card-title>Edit Schedule</mat-card-title>
   <mat-card-content>
-    <form [formGroup]="editForm" (ngSubmit)="onSavePointerUp($event)">
-      <mat-form-field appearance="fill" class="full-width">
-        <mat-label>Order ID</mat-label>
-        <input
-          matInput
-          formControlName="orderId"
-          placeholder="Order UUID"
-          [matAutocomplete]="orderAuto"
-          (blur)="validateOrderId(orderId.value)" />
+    <div *ngIf="isLoaded; else loadingTemplate">
+      <form [formGroup]="editForm" (ngSubmit)="onSavePointerUp($event)">
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Order ID</mat-label>
+          <input
+            matInput
+            formControlName="orderId"
+            placeholder="Order UUID"
+            [matAutocomplete]="orderAuto"
+            (blur)="validateOrderId(orderId.value)" />
 
-        <!-- paste helper -->
-        <button
-          mat-icon-button
-          matSuffix
-          *ngIf="clipboardSupported"
-          type="button"
-          aria-label="Paste order id"
-          (click)="pasteFromClipboard()"
-          title="Paste from clipboard"
-        >
-          <mat-icon>content_paste</mat-icon>
-        </button>
+          <!-- paste helper -->
+          <button
+            mat-icon-button
+            matSuffix
+            *ngIf="clipboardSupported"
+            type="button"
+            aria-label="Paste order id"
+            (click)="pasteFromClipboard()"
+            title="Paste from clipboard"
+          >
+            <mat-icon>content_paste</mat-icon>
+          </button>
 
-        <mat-hint *ngIf="searchTooShortOrder">
-          Please type at least {{ searchMinLength }} characters to search.
-        </mat-hint>
+          <mat-hint *ngIf="searchTooShortOrder">
+            Please type at least {{ searchMinLength }} characters to search.
+          </mat-hint>
 
-        <mat-hint *ngIf="validatingOrder">
-          <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
-          Checking order…
-        </mat-hint>
-        <mat-error *ngIf="editForm.get('orderId')?.hasError('required')">
-          Order ID is required
-        </mat-error>
-        <mat-error *ngIf="!validatingOrder && editForm.get('orderId')?.hasError('notFound')">
-          Order not found
-        </mat-error>
+          <mat-hint *ngIf="validatingOrder">
+            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+            Checking order…
+          </mat-hint>
+          <mat-error *ngIf="editForm.get('orderId')?.hasError('required')">
+            Order ID is required
+          </mat-error>
+          <mat-error *ngIf="!validatingOrder && editForm.get('orderId')?.hasError('notFound')">
+            Order not found
+          </mat-error>
 
-        <mat-autocomplete
-          #orderAuto="matAutocomplete"
-          (optionSelected)="onOrderSelected($event.option.value)">
-          <mat-option *ngFor="let o of orderSuggestions$ | async" [value]="o.id">
-            {{ o.id }} — {{ o.customerName || o.title || o.userEmail }}
-          </mat-option>
-        </mat-autocomplete>
-      </mat-form-field>
+          <mat-autocomplete
+            #orderAuto="matAutocomplete"
+            (optionSelected)="onOrderSelected($event.option.value)">
+            <mat-option *ngFor="let o of orderSuggestions$ | async" [value]="o.id">
+              {{ o.id }} — {{ o.customerName || o.title || o.userEmail }}
+            </mat-option>
+          </mat-autocomplete>
+        </mat-form-field>
 
-      <mat-form-field appearance="fill" class="full-width">
-        <mat-label>Start</mat-label>
-        <input
-          matInput
-          [matDatepicker]="startPicker"
-          formControlName="scheduledStart"
-          [min]="nextMidnight" />
-        <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
-        <mat-datepicker #startPicker></mat-datepicker>
-        <mat-error *ngIf="editForm.get('scheduledStart')?.hasError('required')">
-          Start date/time is required
-        </mat-error>
-        <mat-error *ngIf="editForm.get('scheduledStart')?.hasError('beforeMidnight')">
-          Start cannot be before midnight of next day
-        </mat-error>
-      </mat-form-field>
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Start</mat-label>
+          <input
+            matInput
+            [matDatepicker]="startPicker"
+            formControlName="scheduledStart"
+            [min]="nextMidnight" />
+          <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+          <mat-error *ngIf="editForm.get('scheduledStart')?.hasError('required')">
+            Start date/time is required
+          </mat-error>
+          <mat-error *ngIf="editForm.get('scheduledStart')?.hasError('beforeMidnight')">
+            Start cannot be before midnight of next day
+          </mat-error>
+        </mat-form-field>
 
-      <mat-form-field appearance="fill" class="full-width">
-        <mat-label>End</mat-label>
-        <input
-          matInput
-          [matDatepicker]="endPicker"
-          formControlName="scheduledEnd"
-          [min]="scheduledStart.value ? addOneDay(scheduledStart.value) : nextMidnight" />
-        <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
-        <mat-datepicker #endPicker></mat-datepicker>
-        <mat-error *ngIf="editForm.get('scheduledEnd')?.hasError('required')">
-          End date/time is required
-        </mat-error>
-        <mat-error *ngIf="editForm.get('scheduledEnd')?.hasError('endBeforeStart')">
-          End date/time must be the same or after Start date/time
-        </mat-error>
-      </mat-form-field>
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>End</mat-label>
+          <input
+            matInput
+            [matDatepicker]="endPicker"
+            formControlName="scheduledEnd"
+            [min]="scheduledStart.value ? addOneDay(scheduledStart.value) : nextMidnight" />
+          <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+          <mat-error *ngIf="editForm.get('scheduledEnd')?.hasError('required')">
+            End date/time is required
+          </mat-error>
+          <mat-error *ngIf="editForm.get('scheduledEnd')?.hasError('endBeforeStart')">
+            End date/time must be the same or after Start date/time
+          </mat-error>
+        </mat-form-field>
 
-      <mat-form-field appearance="fill" class="full-width">
-        <mat-label>Title</mat-label>
-        <input
-          matInput
-          formControlName="title"
-          maxlength="250" />
-        <mat-error *ngIf="title.hasError('required')">
-          Title is required
-        </mat-error>
-        <mat-error *ngIf="title.hasError('maxlength')">
-          Max length is 250 characters ({{ editForm.get('title')?.value?.length || 0 }}/250)
-        </mat-error>
-      </mat-form-field>
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Title</mat-label>
+          <input
+            matInput
+            formControlName="title"
+            maxlength="250" />
+          <mat-error *ngIf="title.hasError('required')">
+            Title is required
+          </mat-error>
+          <mat-error *ngIf="title.hasError('maxlength')">
+            Max length is 250 characters ({{ editForm.get('title')?.value?.length || 0 }}/250)
+          </mat-error>
+        </mat-form-field>
 
-      <mat-form-field appearance="fill" class="full-width">
-        <mat-label>Description</mat-label>
-        <textarea
-          matInput
-          formControlName="description"
-          maxlength="1000" rows="5">
-        </textarea>
-        <mat-error *ngIf="editForm.get('description')?.hasError('required')">
-          Description is required
-        </mat-error>
-        <mat-error *ngIf="editForm.get('description')?.hasError('maxlength')">
-          Max length is 1000 characters ({{ description.value?.length || 0 }}/1000).
-        </mat-error>
-      </mat-form-field>
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Description</mat-label>
+          <textarea
+            matInput
+            formControlName="description"
+            maxlength="1000" rows="5">
+          </textarea>
+          <mat-error *ngIf="editForm.get('description')?.hasError('required')">
+            Description is required
+          </mat-error>
+          <mat-error *ngIf="editForm.get('description')?.hasError('maxlength')">
+            Max length is 1000 characters ({{ description.value?.length || 0 }}/1000).
+          </mat-error>
+        </mat-form-field>
 
-      <div class="form-field full-width">
-        <mat-label>Assigned To</mat-label>
-        <ng-select
-          formControlName="assignedTo"
-          [items]="userList"
-          bindLabel="displayName"
-          [typeahead]="userTypeahead$"
-          [loading]="validatingAssigned"
-          [searchable]="true"
-          placeholder="Start typing user name..."
-          [readonly]="!isAdmin"
-          (change)="onUserSelected($event)"
-          (blur)="validateAssignedTo(assignedTo.value)"
-          (search)="userTypeahead$.next($event.term)">
+        <div class="form-field full-width">
+          <mat-label>Assigned To</mat-label>
+          <ng-select
+            formControlName="assignedTo"
+            [items]="userList"
+            bindLabel="displayName"
+            [typeahead]="userTypeahead$"
+            [loading]="validatingAssigned"
+            [searchable]="true"
+            placeholder="Start typing user name..."
+            [readonly]="!isAdmin"
+            (change)="onUserSelected($event)"
+            (blur)="validateAssignedTo(assignedTo.value)"
+            (search)="userTypeahead$.next($event.term)">
 
-          <!-- Option template: how each option is shown in dropdown -->
-          <ng-template ng-option-tmp let-item="item">
-            {{ item.email }}
-            <span *ngIf="item.fullName || item.displayName"> — {{ item.fullName || item.displayName }}</span>
-          </ng-template>
+            <!-- Option template: how each option is shown in dropdown -->
+            <ng-template ng-option-tmp let-item="item">
+              {{ item.email }}
+              <span *ngIf="item.fullName || item.displayName"> — {{ item.fullName || item.displayName }}</span>
+            </ng-template>
 
-          <!-- Label template: what is shown in the select input when an item is selected -->
-          <ng-template ng-label-tmp let-item="item">
-            {{ item.email }}
-            <span *ngIf="item.fullName || item.displayName"> — {{ item.fullName || item.displayName }}</span>
-          </ng-template>
-        </ng-select>
+            <!-- Label template: what is shown in the select input when an item is selected -->
+            <ng-template ng-label-tmp let-item="item">
+              {{ item.email }}
+              <span *ngIf="item.fullName || item.displayName"> — {{ item.fullName || item.displayName }}</span>
+            </ng-template>
+          </ng-select>
 
-        <small class="text-muted" *ngIf="searchTooShortUser && assignedTo.value?.length < searchMinLength">
-          Please type at least {{ searchMinLength }} characters to search.
-        </small>
+          <small class="text-muted" *ngIf="searchTooShortUser && assignedTo.value?.length < searchMinLength">
+            Please type at least {{ searchMinLength }} characters to search.
+          </small>
 
-        <div class="validation" *ngIf="validatingAssigned">
-          <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
-          Checking user…
+          <div class="validation" *ngIf="validatingAssigned">
+            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+            Checking user…
+          </div>
+
+          <mat-error *ngIf="assignedTo.hasError('required')">
+            User is required
+          </mat-error>
+
+          <mat-error *ngIf="!validatingAssigned && assignedTo.hasError('notFound')">
+            User not found
+          </mat-error>
         </div>
 
-        <mat-error *ngIf="assignedTo.hasError('required')">
-          User is required
-        </mat-error>
-
-        <mat-error *ngIf="!validatingAssigned && assignedTo.hasError('notFound')">
-          User not found
-        </mat-error>
-      </div>
-
-      <div class="form-actions">
-        <button
-          mat-raised-button
-          color="primary"
-          type="button"
-          [disabled]="isSubmitting || editForm?.pending || validatingAssigned || validatingOrder"
-          (pointerup)="onSavePointerUp($event)"
-        >
-          {{ isSubmitting ? 'Saving changes…' : 'Save changes' }}
-        </button>
-        <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
-      </div>
-    </form>
+        <div class="form-actions">
+          <button
+            mat-raised-button
+            color="primary"
+            type="button"
+            [disabled]="isSubmitting || editForm?.pending || validatingAssigned || validatingOrder"
+            (pointerup)="onSavePointerUp($event)"
+          >
+            {{ isSubmitting ? 'Saving changes…' : 'Save changes' }}
+          </button>
+          <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
+        </div>
+      </form>
+    </div>
+    
+    <ng-template #loadingTemplate>
+      <div class="loading-text">Loading schedule...</div>
+    </ng-template>
   </mat-card-content>
 </mat-card>

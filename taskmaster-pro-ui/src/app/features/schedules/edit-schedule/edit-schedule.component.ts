@@ -31,6 +31,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
   editForm!: FormGroup;
   isSubmitting = false;
   scheduleId!: string;
+  isLoaded = false;
   private destroy$ = new Subject<void>();
   private pointerSubmitInProgress = false;
 
@@ -138,7 +139,11 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
 
       // Get the schedule with the id provided in the route
       this.scheduleService.getById(this.scheduleId).pipe(
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
+        finalize(() => {
+          this.isLoaded = true;
+          this.cdr.detectChanges();
+        })
       ).subscribe(schedule => {
         this.editForm.patchValue(schedule);
 
