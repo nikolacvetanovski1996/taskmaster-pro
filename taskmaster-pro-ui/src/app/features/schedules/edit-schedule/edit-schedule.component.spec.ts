@@ -24,6 +24,7 @@ class MockUserService {
   getById = jasmine.createSpy('getById').and.returnValue(of(userMock));
   searchUsers = jasmine.createSpy('searchUsers').and.returnValue(of([userMock]));
   exists = jasmine.createSpy('exists').and.returnValue(of(true));
+  existsCached = jasmine.createSpy('existsCached').and.returnValue(of(true));
 }
 
 class MockAuthService {
@@ -44,7 +45,7 @@ describe('EditScheduleComponent', () => {
     mockNotification = new MockNotificationService();
     mockAuthService = new MockAuthService();
     routerSpy = jasmine.createSpyObj('Router', ['navigate']);
-
+    
     await TestBed.configureTestingModule({
       imports: [
         ReactiveFormsModule,
@@ -232,12 +233,12 @@ describe('EditScheduleComponent', () => {
     expect((component as any).destroy$.complete).toHaveBeenCalled();
   });
 
-  it('onOrderSelected sets orderId and triggers validate', fakeAsync(() => {
-    spyOn(component, 'validateOrderId');
-    component.onOrderSelected('selected-123');
+  it('onUserSelected sets selectedUser and triggers validate', fakeAsync(() => {
+    spyOn(component, 'validateAssignedTo');
+    component.onUserSelected(userMock);
     tick();
-    expect(component.orderId.value).toBe('selected-123');
-    expect(component.validateOrderId).toHaveBeenCalledWith('selected-123');
+    expect(component.selectedUser).toEqual(userMock);
+    expect(component.validateAssignedTo).toHaveBeenCalledWith(userMock);
   }));
 
   it('onUserSelected sets selectedUser and assignedTo control', () => {

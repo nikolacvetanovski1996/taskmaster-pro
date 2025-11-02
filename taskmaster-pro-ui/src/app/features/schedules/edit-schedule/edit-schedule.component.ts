@@ -1,6 +1,6 @@
 import { ChangeDetectorRef , Component, OnInit, OnDestroy, NgZone } from '@angular/core';
-import { Subject, Observable, of } from 'rxjs';
-import { debounceTime, distinctUntilChanged, switchMap, catchError, take, tap, finalize, takeUntil } from 'rxjs/operators'
+import { Subject, of } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, catchError, take, finalize, takeUntil } from 'rxjs/operators'
 import { CommonModule } from '@angular/common';
 import { AbstractControl, ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
 import { Router, ActivatedRoute  } from '@angular/router';
@@ -258,7 +258,7 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
       scheduledStart: toIsoMidnight(this.editForm.value.scheduledStart),
       scheduledEnd:   toIsoMidnight(this.editForm.value.scheduledEnd),
       description:    this.editForm.value.description,
-      assignedToId:     assignedToId
+      assignedToId:   assignedToId
     };
 
     this.scheduleService.update(this.scheduleId, dto).subscribe({

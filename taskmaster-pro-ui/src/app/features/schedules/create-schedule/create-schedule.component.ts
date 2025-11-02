@@ -1,6 +1,6 @@
-  import { ChangeDetectorRef , Component, OnInit } from '@angular/core';
-  import { Subject, Observable, of, firstValueFrom } from 'rxjs';
-  import { debounceTime, distinctUntilChanged, switchMap, catchError, tap, takeUntil } from 'rxjs/operators'
+  import { ChangeDetectorRef , Component, OnInit, OnDestroy, NgZone } from '@angular/core';
+  import { Subject, Observable, of } from 'rxjs';
+  import { debounceTime, distinctUntilChanged, switchMap, catchError, tap, finalize, takeUntil } from 'rxjs/operators'
   import { CommonModule } from '@angular/common';
   import { AbstractControl, ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
   import { Router, ActivatedRoute  } from '@angular/router';
@@ -27,10 +27,12 @@
     templateUrl: './create-schedule.component.html',
     styleUrls: ['./create-schedule.component.scss']
   })
-  export class CreateScheduleComponent implements OnInit {
+  export class CreateScheduleComponent implements OnInit, OnDestroy {
     scheduleForm!: FormGroup;
     isSubmitting = false;
     private destroy$ = new Subject<void>();
+    private pointerSubmitInProgress = false;
+    private isInitialized = false;
 
     // Typeahead/observables
     orderSuggestions$: Observable<any[]> = of([]);
@@ -65,10 +67,21 @@
       private userService: UserService,
       private router: Router,
       private route: ActivatedRoute,
-      private cdr: ChangeDetectorRef
+      private cdr: ChangeDetectorRef,
+      private ngZone: NgZone
     ) {}
 
     ngOnInit() {
+      // Initialize the form
+      this.scheduleForm = this.fb.group({
+          orderId:        ['', Validators.required],
+          title:          ['', [Validators.required, Validators.maxLength(250)]],
+          scheduledStart: [new Date(), [Validators.required, this.startNotBeforeMidnightValidator]],
+          scheduledEnd:   [new Date(), Validators.required],
+          description:    ['', [Validators.required, Validators.maxLength(1000)]],
+          assignedTo:     [null]
+      }, { validators: this.endAfterStartValidator(this.nextMidnight) });
+
       // Initialize Current User / Role
       this.authService.isAdmin$.pipe(
         takeUntil(this.destroy$)
@@ -76,143 +89,134 @@
         this.isAdmin = isAdmin;
         this.currentUserId = this.authService.getCurrentUser()?.id ?? null;
 
-        if (!this.scheduleForm) {
-          // Initialize the form
-          this.scheduleForm = this.fb.group({
-              orderId:        ['', Validators.required],
-              title:          ['', [Validators.required, Validators.maxLength(250)]],
-              scheduledStart: [new Date(), [Validators.required, this.startNotBeforeMidnightValidator]],
-              scheduledEnd:   [new Date(), Validators.required],
-              description:    ['', [Validators.required, Validators.maxLength(1000)]],
-              assignedTo:     [null]
-          }, { validators: this.endAfterStartValidator(this.nextMidnight) });
+        if (!this.isInitialized) {
+          // assignedTo field: required only for admins
+          if (this.isAdmin) {
+            this.assignedTo.setValidators([Validators.required]);
+          } else {
+            this.assignedTo.clearValidators();
+          }
+          this.assignedTo.updateValueAndValidity({ emitEvent: false });
 
-        // assignedTo field: required only for admins
-        if (this.isAdmin) {
-          this.assignedTo.setValidators([Validators.required]);
-        } else {
-          this.assignedTo.clearValidators();
-        }
-        this.assignedTo.updateValueAndValidity({ emitEvent: false });
+          // Disable the assignedTo control for non-admin users
+          if (!this.isAdmin) this.assignedTo.disable({ emitEvent: false });
+            else this.assignedTo.enable({ emitEvent: false });
 
-        // Disable the assignedTo control for non-admin users
-        if (!this.isAdmin) this.assignedTo.disable({ emitEvent: false });
-          else this.assignedTo.enable({ emitEvent: false });
+          // If there is a currentUserId, fetch the user object and set selectedUser
+          if (this.currentUserId) {
+            this.userService.getById(this.currentUserId).pipe(
+              takeUntil(this.destroy$),
+              catchError(() => of(null))
+            ).subscribe(u => {
+              if (u) {
+                this.userCache.set(u.id, u);
+                this.selectedUser = u;
+                this.assignedTo.setValue(u, { emitEvent: false });
+                if (!this.userList.some(x => x.id === u.id)) this.userList.unshift(u);
+                this.cdr.detectChanges();
+              }
+            });
+          }
 
-        // If there is a currentUserId, fetch the user object and set selectedUser
-        if (this.currentUserId) {
-          this.userService.getById(this.currentUserId).pipe(
-            takeUntil(this.destroy$),
-            catchError(() => of(null))
-          ).subscribe(u => {
-            if (u) {
-              this.userCache.set(u.id, u);
-              this.selectedUser = u;
-              this.assignedTo.setValue(u, { emitEvent: false });
-              if (!this.userList.some(x => x.id === u.id)) this.userList.unshift(u);
-              this.cdr.detectChanges();
-            }
+          // Prefill orderId from query param (if present)
+          const q = this.route.snapshot.queryParamMap.get('orderId');
+          if (q) {
+            this.orderId.setValue(q);
+            this.validateOrderId(q);
+          }
+
+          // Trigger API search from typing
+          this.userTypeahead$
+            .pipe(
+              takeUntil(this.destroy$),
+              debounceTime(300),
+              distinctUntilChanged(),
+              switchMap(term => {
+                if (!term || term.length < this.searchMinLength) {
+                  this.searchTooShortUser = true;
+                  return of([]);
+                }
+                this.searchTooShortUser = false;
+                return this.userService.searchUsers(term).pipe(
+                  catchError(() => of([]))
+                );
+              })
+            )
+            .subscribe(list => {
+              let filtered = [...list];
+              if (this.selectedUser && this.selectedUser.email.toLowerCase().includes(this.assignedTo.value?.toString().toLowerCase() || '')) {
+                filtered.push(this.selectedUser);
+              }
+              this.userList = Array.from(new Map(filtered.map(u => [u.id, u])).values());
+            });
+
+          this.assignedTo.valueChanges
+          .pipe(takeUntil(this.destroy$))
+          .subscribe(v => {
+            if (typeof v === 'string') this.userTypeahead$.next(v);
           });
-        }
-
-        // Prefill orderId from query param (if present)
-        const q = this.route.snapshot.queryParamMap.get('orderId');
-        if (q) {
-          this.orderId.setValue(q);
-          this.validateOrderId(q);
-        }
-
-        // Trigger API search from typing
-        this.userTypeahead$
-          .pipe(
+            
+          // Server-side autocomplete for orders: debounce + minimum length
+          this.orderSuggestions$ = this.orderId.valueChanges.pipe(
             takeUntil(this.destroy$),
             debounceTime(300),
             distinctUntilChanged(),
-            switchMap(term => {
-              if (!term || term.length < this.searchMinLength) {
-                this.searchTooShortUser = true;
+            switchMap(val => {
+              const str = val?.toString().trim() || '';
+              if (str.length < this.searchMinLength) {
+                this.searchTooShortOrder = true; // show warning in template
                 return of([]);
+              } else {
+                this.searchTooShortOrder = false;
+                return this.orderService.searchOrders(str).pipe(
+                  catchError(() => of([]))
+                );
               }
-              this.searchTooShortUser = false;
-              return this.userService.searchUsers(term).pipe(
-                catchError(() => of([]))
+            })
+          );
+
+          // Validate on pause/blur-ish behavior: when value stabilizes, check existence
+          this.orderId.valueChanges.pipe(
+            takeUntil(this.destroy$),
+            debounceTime(700),
+            distinctUntilChanged(),
+            tap(val => {
+              // Reset validation display until proven
+              this.isOrderValid = false;
+              this.validatingOrder = true;             // <-- Show spinner/hint while checking
+              if (!val || val.toString().trim().length === 0) {
+                this.scheduleForm.get('orderId')?.setErrors({ required: true });
+                this.validatingOrder = false;         // Stop validating if empty
+              }
+            }),
+            switchMap(val => {
+              if (!val || val.toString().trim().length === 0) return of(null);
+              return this.orderService.exists(val.toString()).pipe(
+                catchError(() => of(false))
               );
             })
-          )
-          .subscribe(list => {
-            let filtered = [...list];
-            if (this.selectedUser && this.selectedUser.email.toLowerCase().includes(this.assignedTo.value?.toString().toLowerCase() || '')) {
-              filtered.push(this.selectedUser);
+          ).subscribe(result => {
+            if (result === null) {
+              // Nothing to do
+              this.validatingOrder = false;
+              return;
             }
-            this.userList = Array.from(new Map(filtered.map(u => [u.id, u])).values());
-          });
-
-        this.assignedTo.valueChanges
-        .pipe(takeUntil(this.destroy$))
-        .subscribe(v => {
-          if (typeof v === 'string') this.userTypeahead$.next(v);
-        });
-          
-        // Server-side autocomplete for orders: debounce + minimum length
-        this.orderSuggestions$ = this.orderId.valueChanges.pipe(
-          takeUntil(this.destroy$),
-          debounceTime(300),
-          distinctUntilChanged(),
-          switchMap(val => {
-            const str = val?.toString().trim() || '';
-            if (str.length < this.searchMinLength) {
-              this.searchTooShortOrder = true; // show warning in template
-              return of([]);
-            } else {
-              this.searchTooShortOrder = false;
-              return this.orderService.searchOrders(str).pipe(
-                catchError(() => of([]))
-              );
-            }
-          })
-        );
-
-        // Validate on pause/blur-ish behavior: when value stabilizes, check existence
-        this.orderId.valueChanges.pipe(
-          takeUntil(this.destroy$),
-          debounceTime(700),
-          distinctUntilChanged(),
-          tap(val => {
-            // Reset validation display until proven
-            this.isOrderValid = false;
-            this.validatingOrder = true;             // <-- Show spinner/hint while checking
-            if (!val || val.toString().trim().length === 0) {
-              this.scheduleForm.get('orderId')?.setErrors({ required: true });
-              this.validatingOrder = false;         // Stop validating if empty
-            }
-          }),
-          switchMap(val => {
-            if (!val || val.toString().trim().length === 0) return of(null);
-            return this.orderService.exists(val.toString()).pipe(
-              catchError(() => of(false))
-            );
-          })
-        ).subscribe(result => {
-          if (result === null) {
-            // Nothing to do
             this.validatingOrder = false;
-            return;
-          }
-          this.validatingOrder = false;
-          if (result === true) {
-            this.isOrderValid = true;
-            // Clear notFound error if any
-            const ctrl = this.scheduleForm.get('orderId');
-            if (ctrl?.hasError('notFound')) ctrl.setErrors(null);
-          } else {
-            this.isOrderValid = false;
-            this.scheduleForm.get('orderId')?.setErrors({ notFound: true });
-          }
-        });
+            if (result === true) {
+              this.isOrderValid = true;
+              // Clear notFound error if any
+              const ctrl = this.scheduleForm.get('orderId');
+              if (ctrl?.hasError('notFound')) ctrl.setErrors(null);
+            } else {
+              this.isOrderValid = false;
+              this.scheduleForm.get('orderId')?.setErrors({ notFound: true });
+            }
+          });
+          this.isInitialized = true;
         } else {
-            // Update assignedTo field if isAdmin changed
-            this.assignedTo.setValue(this.isAdmin ? '' : this.currentUserId);
-          }
+          // Update assignedTo field if isAdmin changed
+          this.assignedTo.setValue(this.isAdmin ? '' : this.currentUserId);
+        }
       });
     }
 
@@ -222,7 +226,18 @@
     }
 
     async submit() {
-       // Prevent multiple submits
+      this.cdr.detectChanges();
+
+      // Force assignedTo validation
+      const assignedValid = await this.validateAssignedTo(this.assignedTo.value);
+
+      if (!assignedValid) {
+        this.notification.show('Assigned To is invalid or not found.', 'Close');
+        this.scheduleForm.markAllAsTouched();
+        return;
+      }
+    
+      // Prevent multiple submits
       if (this.scheduleForm.invalid) {
         // Mark touched so mat-error appears
         this.scheduleForm.markAllAsTouched();
@@ -236,43 +251,10 @@
       }
 
       // Extract assignedToId from assignedTo property
-      let assignedValue = this.isAdmin
-        ? this.scheduleForm.value.assignedTo ?? this.selectedUser
+      const assignedValue = this.scheduleForm.value.assignedTo;
+      const assignedToId = this.isAdmin
+        ? (assignedValue && typeof assignedValue === 'object' ? assignedValue.id : assignedValue)
         : this.currentUserId;
-
-      if (!assignedValue) {
-        this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
-        this.scheduleForm.markAllAsTouched();
-        return;
-      }
-
-      // Normalize into an id string
-      const assignedId = typeof assignedValue === 'object'
-        ? assignedValue.id
-        : assignedValue.toString().trim();
-
-      if (!assignedId) {
-        this.scheduleForm.get('assignedTo')?.setErrors({ required: true });
-        this.scheduleForm.markAllAsTouched();
-        return;
-      }
-
-      // Validate assigned user exists (async)
-      const ok = await this.validateAssignedTo(assignedId);
-      if (!ok) {
-        this.scheduleForm.markAllAsTouched();
-        return;
-      }
-
-      this._doSubmit(assignedId);
-    }
-
-    private _doSubmit(assignedToId: string | null) {
-      // Guard again just in case
-      if (!assignedToId) {
-        this.notification.show('Assigned user missing.', 'Close');
-        return;
-      }
 
       this.isSubmitting = true;
 
@@ -343,43 +325,36 @@
       if (!this.userList.find(u => u.id === selectedUser.id)) {
         this.userList.unshift(selectedUser);
       }
-
-      // Set the control value, mark as dirty/touched and validate
-      this.assignedTo.setValue(selectedUser);
-      this.assignedTo.markAsDirty();
-      this.assignedTo.markAsTouched();
-      this.assignedTo.updateValueAndValidity();
+      this.assignedTo.setValue(selectedUser, { emitEvent: false });
       this.validateAssignedTo(selectedUser);
 
       this.cdr.detectChanges();
     }
 
     // Validate single Assigned To on-demand (called after paste or explicit action)
-    async validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
-      let id = '';
-      if (!val) return false;
-      if (typeof val === 'string') id = val.trim();
-      else id = (val as UserDto).id;
+    validateAssignedTo(val: string | UserDto | null): Promise<boolean> {
+      return new Promise(resolve => {
+        let id = '';
+        if (!val) { resolve(false); return; }
+        if (typeof val === 'string') id = val.trim();
+        else id = (val as UserDto).id;
+        if (!id) { resolve(false); return; }
 
-      if (!id) return false;
-
-      this.validatingAssigned = true;
-      try {
-        const exists = await firstValueFrom(
-          this.userService.exists(id).pipe(
-            catchError(() => of(false))
-          )
-        );
-        const ctrl = this.scheduleForm.get('assignedTo');
-        if (!exists) ctrl?.setErrors({ notFound: true });
-        else {
-          if (ctrl?.hasError('notFound')) ctrl.updateValueAndValidity({ onlySelf: true });
-        }
-
-        return exists;
-      } finally {
-        this.validatingAssigned = false;
-      }
+        this.validatingAssigned = true;
+        this.userService.existsCached(id).pipe(
+          takeUntil(this.destroy$),
+          catchError(() => of(false)),
+          finalize(() => {
+            this.validatingAssigned = false;
+            this.cdr.detectChanges();
+          })
+        ).subscribe(exists => {
+          const ctrl = this.scheduleForm.get('assignedTo');
+          if (!exists) ctrl?.setErrors({ notFound: true });
+          else ctrl?.updateValueAndValidity({ onlySelf: true });
+          resolve(exists);
+        });
+      });
     }
 
     // Optional Paste helper (permission required on some browsers). Graceful fallback to notification.
@@ -443,6 +418,79 @@
       const d = new Date(date);
       d.setDate(d.getDate() + 1);
       return d;
+    }
+
+    // Ensure ng-select internal handlers finished (microtask + macrotask)
+    private async waitForNgSelectFinalize(): Promise<void> {
+      await Promise.resolve();
+      await new Promise(res => setTimeout(res, 0));
+    }
+
+    // Wait until control.status !== 'PENDING' or timeout
+    private async waitUntilControlStable(control: AbstractControl | null, timeoutMs = 5000): Promise<'stable' | 'timeout'> {
+      if (!control) return 'stable';
+      if (control.status !== 'PENDING') return 'stable';
+      const start = Date.now();
+      return new Promise(resolve => {
+        const sub = (control.statusChanges as any)?.subscribe?.((status: string) => {
+          if (status !== 'PENDING') {
+            sub?.unsubscribe?.();
+            return resolve('stable');
+          }
+          if (Date.now() - start > timeoutMs) {
+            sub?.unsubscribe?.();
+            return resolve('timeout');
+          }
+        });
+        // fallback poll
+        const poll = () => {
+          if (control.status !== 'PENDING') { sub?.unsubscribe?.(); return resolve('stable'); }
+          if (Date.now() - start > timeoutMs) { sub?.unsubscribe?.(); return resolve('timeout'); }
+          setTimeout(poll, 50);
+        };
+        poll();
+      });
+    }
+
+    // A pointerup handler to coordinate validation and submission
+    async onSavePointerUp(ev?: PointerEvent) {
+      // Prevent double triggering
+      if (this.pointerSubmitInProgress || this.isSubmitting) {
+        if (ev) ev.preventDefault();
+        return;
+      }
+      this.pointerSubmitInProgress = true;
+
+      try {
+        // Ensure any ng-select blur/selection handlers run first
+        await this.waitForNgSelectFinalize();
+
+        // Allow Angular zone to pick up changes before proceeding
+        await this.ngZone.run(async () => {
+          this.cdr.detectChanges();
+        });
+
+        // Wait for async validators to finish on assignedTo and orderId
+        const assignedCtrl = this.assignedTo;
+        const orderCtrl = this.orderId;
+
+        const [assignedStable, orderStable] = await Promise.all([
+          this.waitUntilControlStable(assignedCtrl, 5000),
+          this.waitUntilControlStable(orderCtrl, 5000)
+        ]);
+
+        if (assignedStable === 'timeout' || orderStable === 'timeout') {
+          this.notification.show('Validation timed out — try again.', 'Close');
+          return;
+        }
+
+        // Finally, call submit if available
+        if (typeof (this as any).submit === 'function') {
+          await (this as any).submit();
+        }
+      } finally {
+        this.pointerSubmitInProgress = false;
+      }
     }
 
     // Getters for form controls

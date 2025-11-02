@@ -136,7 +136,13 @@
         >
           {{ isSubmitting ? 'Saving changes…' : 'Save changes' }}
         </button>
-        <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
+        <button
+          mat-stroked-button 
+          type="button"
+          (click)="cancel()"
+        >
+          Cancel
+        </button>
       </div>
     </form>
   </mat-card-content>

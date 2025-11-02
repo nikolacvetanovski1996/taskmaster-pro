@@ -1,7 +1,7 @@
 <mat-card class="form-card">
   <mat-card-title>Create New Schedule</mat-card-title>
   <mat-card-content>
-    <form [formGroup]="scheduleForm" (ngSubmit)="submit()">
+    <form [formGroup]="scheduleForm" (ngSubmit)="onSavePointerUp($event)">
       <mat-form-field appearance="fill" class="full-width">
         <mat-label>Order ID</mat-label>
         <input
@@ -155,10 +155,22 @@
       </div>
 
       <div class="button-group">
-        <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting || validatingAssigned">
+        <button
+          mat-raised-button
+          color="primary"
+          type="button"
+          [disabled]="isSubmitting || validatingAssigned"
+          (pointerup)="onSavePointerUp($event)"
+        >
           {{ isSubmitting ? 'Saving…' : 'Save' }}
         </button>
-        <button mat-button (click)="cancel()" type="button">Cancel</button>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="cancel()"
+        >
+          Cancel
+        </button>
       </div>
     </form>
   </mat-card-content>
