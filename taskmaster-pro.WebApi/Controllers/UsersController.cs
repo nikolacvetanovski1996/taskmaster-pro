@@ -32,7 +32,6 @@ public class UsersController : ControllerBase
     #region Public Methods
 
     [HttpGet("{id:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid id)
     {
         var userViewModel = await _mediator.Send(new Features.Users.Queries.GetUserById.GetUserByIdQuery(id));

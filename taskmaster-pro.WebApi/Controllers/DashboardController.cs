@@ -1,10 +1,12 @@
-﻿using taskmaster_pro.Application.Features.Dashboard.Queries.GetDashboard;
+﻿using Microsoft.AspNetCore.Authorization;
+using taskmaster_pro.Application.Features.Dashboard.Queries.GetDashboard;
 using static taskmaster_pro.Application.Features.Dashboard.Queries.GetDashboard.GetDashboardStatsQuery;
 
 namespace Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class DashboardController : ControllerBase
     {
         #region Fields
