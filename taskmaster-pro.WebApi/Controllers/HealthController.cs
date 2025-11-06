@@ -14,6 +14,7 @@
 
         // Simple health check endpoint
         [HttpGet("check")]
+        [HttpHead("check")]
         public IActionResult CheckHealth()
         {
             return Ok("Healthy");
