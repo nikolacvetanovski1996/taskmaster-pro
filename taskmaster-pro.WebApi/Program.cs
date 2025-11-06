@@ -5,7 +5,9 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 using System.IO;
 using System.Linq;
 using System.Security.Claims;
@@ -67,7 +69,6 @@ try
     );
 
     // ============ INFRASTRUCTURE (Persistence + Repositories + HttpContextAccessor + Shared + Recaptcha) =============
-    
     builder.Services.Scan(selector => selector
         .FromAssembliesOf(typeof(IGenericRepositoryAsync<>))
         .AddClasses(classSelector => classSelector.AssignableTo(typeof(IGenericRepositoryAsync<>)))
@@ -80,6 +81,11 @@ try
     builder.Services.AddSharedInfrastructure(builder.Configuration);
     builder.Services.AddScoped<IUserRoleService, IdentityUserRoleService>();
     builder.Services.AddSessionService(builder.Configuration);
+    var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ??
+                            builder.Configuration["Redis:Connection"];
+    builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+        ConnectionMultiplexer.Connect(redisConnectionString)
+    );
 
     // ================== IDENTITY + AUTHENTICATION ==================
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
