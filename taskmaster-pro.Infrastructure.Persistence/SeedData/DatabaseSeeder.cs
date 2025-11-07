@@ -76,7 +76,7 @@ namespace taskmaster_pro.Infrastructure.Persistence.SeedData
                 .ToListAsync();
 
             // If for some reason CreatedBy isn't available (schema mismatch) or provider ignored client ids,
-            // fallback to last inserted by Created timestamp.
+            // Fallback to last inserted by Created timestamp.
             if (seededOrderIds == null || seededOrderIds.Count == 0)
             {
                 seededOrderIds = await _db.Orders
@@ -90,12 +90,23 @@ namespace taskmaster_pro.Infrastructure.Persistence.SeedData
             if (seededOrderIds == null || seededOrderIds.Count == 0)
                 throw new InvalidOperationException("Unable to determine seeded Order IDs after inserting orders.");
 
-            // schedules: only seed if empty (or when wiped)
+            // Schedules: only seed if empty (or when wiped)
             if (!await _db.Schedules.AnyAsync())
             {
+                // Build mapping of seeded orders -> their OrderDate so schedules can be realistic (+/- 30 days around order date)
+                var seededOrders = await _db.Orders
+                    .AsNoTracking()
+                    .Where(o => seededOrderIds.Contains(o.Id))
+                    .Select(o => new { o.Id, o.OrderDate })
+                    .ToListAsync();
+
+                var orderDateMap = seededOrders.ToDictionary(x => x.Id, x => x.OrderDate);
+                
                 // --- Generate Schedules using seededOrderIds ---
                 Randomizer.Seed = new Random(seed + 1);
-                var scheduleFaker = new ScheduleBogusConfig(seededOrderIds, userIds, createdBy: runTag, createdAt: utcNow);
+
+                // Pass orderDateMap into ScheduleBogusConfig
+                var scheduleFaker = new ScheduleBogusConfig(seededOrderIds, userIds, orderDateMap, createdBy: runTag, createdAt: utcNow);
                 var domainSchedules = scheduleFaker.Generate(rowSchedules);
 
                 // Map domain → entity
