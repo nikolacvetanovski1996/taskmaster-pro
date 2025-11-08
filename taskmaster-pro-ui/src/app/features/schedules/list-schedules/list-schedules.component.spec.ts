@@ -4,10 +4,11 @@ import { of, throwError } from 'rxjs';
 import { ListSchedulesComponent } from './list-schedules.component';
 import { ExportService } from '../../../shared/services/export.service';
 import { ScheduleService } from '../../../core/services/schedule.service';
+import { AuthService } from '../../authentication/services/auth.service';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { DialogService } from '../../../shared/services/dialog.service';
 import { DEFAULT_PAGE_SIZE_OPTIONS , PAGE_SIZE_OPTIONS } from '../../../shared/config/pagination-config';
-import { pagedSchedulesMock } from '../../../shared/mock-data';
+import { pagedSchedulesMock, scheduleMock } from '../../../shared/mock-data';
 
 // Mocks
 class MockScheduleService {
@@ -31,6 +32,12 @@ class MockRouter {
 class MockExportService {
   exportToExcel = jasmine.createSpy('exportToExcel');
   exportToCSV = jasmine.createSpy('exportToCSV');
+}
+
+class MockAuthService {
+  getCurrentUser() {
+    return {  id: '00000000-0000-0000-0000-000000000001', isAdmin: true };
+  }
 }
 
 const mapSchedules = (data: any[]) => data.map(s => ({
@@ -65,7 +72,8 @@ describe('ListSchedulesComponent', () => {
         { provide: DialogService, useClass: MockDialogService },
         { provide: Router, useClass: MockRouter },
         { provide: PAGE_SIZE_OPTIONS, useValue: DEFAULT_PAGE_SIZE_OPTIONS },
-        { provide: ExportService, useClass: MockExportService }
+        { provide: ExportService, useClass: MockExportService },
+        { provide: AuthService, useClass: MockAuthService }
       ]
     }).compileComponents();
 
@@ -100,12 +108,15 @@ describe('ListSchedulesComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/schedules/edit', '123']);
   });
 
-  it('should delete schedule when confirmed', () => {
-    component.deleteSchedule('123');
+  it('should delete schedule when confirmed', fakeAsync(() => {
+    component.schedules = [scheduleMock];
+    component.deleteSchedule(scheduleMock.id);
+    tick(); 
+    
     expect(dialogService.confirm).toHaveBeenCalled();
-    expect(scheduleService.delete).toHaveBeenCalledWith('123');
+    expect(scheduleService.delete).toHaveBeenCalledWith(scheduleMock.id);
     expect(notification.show).toHaveBeenCalledWith('Schedule deleted successfully.');
-  });
+  }));
 
   it('should not delete schedule when not confirmed', () => {
     dialogService.confirm.and.returnValue(of(false));
@@ -116,7 +127,7 @@ describe('ListSchedulesComponent', () => {
   it('should show error when delete fails', () => {
     scheduleService.delete.and.returnValue(throwError(() => new Error('fail')));
     component.deleteSchedule('123');
-    expect(notification.show).toHaveBeenCalledWith('Could not delete schedule.', 'Close');
+    expect(notification.show).toHaveBeenCalledWith('Could not find schedule to delete.', 'Close');
   });
 
   it('should export all schedules to Excel', fakeAsync(() => {

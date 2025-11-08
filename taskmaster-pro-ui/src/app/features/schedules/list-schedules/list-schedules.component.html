@@ -82,9 +82,15 @@
           <button mat-icon-button color="accent" (click)="editSchedule(s.id)">
             <mat-icon>edit</mat-icon>
           </button>
-          <button mat-icon-button color="warn" (click)="deleteSchedule(s.id)">
-            <mat-icon>delete</mat-icon>
-          </button>
+          <span matTooltip="{{ s.canDelete ? 'Delete' : 'You do not have permission to delete this schedule' }}">
+            <button mat-icon-button
+              color="warn"
+              (click)="deleteSchedule(s.id)"
+              [disabled]="!s.canDelete || deletingId === s.id">
+              <mat-icon *ngIf="deletingId !== s.id">delete</mat-icon>
+              <mat-progress-spinner *ngIf="deletingId === s.id" diameter="20" mode="indeterminate"></mat-progress-spinner>
+            </button>
+          </span>
         </td>
       </ng-container>
 

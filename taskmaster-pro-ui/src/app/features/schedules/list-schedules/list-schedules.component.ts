@@ -7,6 +7,7 @@ import { ExportService } from '../../../shared/services/export.service';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { ConfirmDialogData  } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ScheduleService } from '../../../core/services/schedule.service';
+import { AuthService } from '../../authentication/services/auth.service';
 import { ExportScheduleRow } from '../../../shared/models/export-schedule-row';
 import { PagedSchedulesQuery, PagedSchedulesViewModel } from '../../../shared/models/paged-schedules';
 import { PageEvent } from '@angular/material/paginator';
@@ -63,18 +64,31 @@ export class ListSchedulesComponent implements OnInit {
     updatedBy: 'Updated By'
   };
 
+  // Deleting permission / UI state
+  currentUserId = '';
+  currentUserIsAdmin = false;
+  deletingId: string | null = null;
+
   constructor(
     private scheduleService: ScheduleService,
     private exportService: ExportService,
     private notification: NotificationService,
     private dialogService: DialogService,
     private router: Router,
+    private authService: AuthService,
     @Inject(PAGE_SIZE_OPTIONS) public pageSizeOptions: number[]
   ) {
     this.pageSize = DEFAULT_PAGE_SIZE;
   }
 
   ngOnInit(): void {
+    // Get basic current user info for permission checks
+    const currentUser = this.authService.getCurrentUser();
+    if (currentUser) {
+      this.currentUserId = currentUser.id ?? '';
+      this.currentUserIsAdmin = currentUser.isAdmin;
+    }
+
     this.loadPage();
   }
 
@@ -98,7 +112,10 @@ export class ListSchedulesComponent implements OnInit {
 
     this.scheduleService.getPaged(query).subscribe({
       next: res => {
-        this.schedules = res.data;
+        this.schedules = res.data.map(s => ({
+          ...s,
+          canDelete: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId)
+        }));
         this.totalRecords = res.recordsTotal;
         this.isLoading = false;
       },
@@ -137,7 +154,26 @@ export class ListSchedulesComponent implements OnInit {
     this.router.navigate(['/schedules/edit', id]);
   }
 
+  canDelete(schedule: PagedSchedulesViewModel): boolean {
+    return !!(
+      schedule &&
+      (this.currentUserIsAdmin || schedule.createdBy === this.currentUserId)
+    );
+  }
+
   deleteSchedule(id: string): void {
+    const schedule = this.schedules?.find(s => s.id === id);
+
+    if (!schedule) {
+      this.notification.show("Could not find schedule to delete.", 'Close');
+      return;
+    }
+
+    if (!this.canDelete(schedule)) {
+      this.notification.show("You don't have permission to delete this schedule.", 'Close');
+      return;
+    }
+    
     const data: ConfirmDialogData = {
       title: 'Confirm Delete',
       message: 'Are you sure you want to delete this schedule?',
