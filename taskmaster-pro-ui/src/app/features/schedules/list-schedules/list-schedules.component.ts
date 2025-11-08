@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { DialogService } from '../../../shared/services/dialog.service';
 import { MaterialModule } from '../../../shared/modules/material.module';
 import { ExportService } from '../../../shared/services/export.service';
@@ -25,7 +26,10 @@ import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/config/pag
   templateUrl: './list-schedules.component.html',
   styleUrls: ['./list-schedules.component.scss']
 })
-export class ListSchedulesComponent implements OnInit {
+export class ListSchedulesComponent implements OnInit, OnDestroy {
+  private subscriptions = new Subscription();
+  private loggedIn = false;
+  
   displayedColumns = [
     'id',
     'orderId',
@@ -85,19 +89,46 @@ export class ListSchedulesComponent implements OnInit {
   ngOnInit(): void {
     // Get basic current user info for permission checks
     const currentUser = this.authService.getCurrentUser();
-    if (currentUser) {
-      this.currentUserId = currentUser.id ?? '';
-    }
+    this.currentUserId = currentUser?.id ?? '';
 
-    this.authService.isAdmin$.subscribe(isAdmin => {
-      this.currentUserIsAdmin = isAdmin;
+    // Track auth state with local flags
+    this.loggedIn = false;
+    this.currentUserIsAdmin = false;
 
-      this.loadPage();
+    const loginSub = this.authService.isLoggedIn$.subscribe(isLoggedIn => {
+      this.loggedIn = isLoggedIn;
+      this.tryLoadPage();
     });
+    this.subscriptions.add(loginSub);
+
+    const adminSub = this.authService.isAdmin$.subscribe(isAdmin => {
+      this.currentUserIsAdmin = isAdmin;
+      this.tryLoadPage();
+    });
+    this.subscriptions.add(adminSub);
+  }
+
+  private tryLoadPage() {
+    if (this.loggedIn && this.currentUserId) {
+      this.loadPage();
+    } else {
+      this.schedules = [];
+      this.totalRecords = 0;
+    }
+  }
+
+  ngOnDestroy() {
+    this.subscriptions.unsubscribe();
   }
 
   /** Loads the current page of schedules */
   loadPage(): void {
+    if (!this.currentUserId) {
+      this.schedules = [];
+      this.totalRecords = 0;
+      return;
+    }
+
     this.isLoading = true;
     // Ensure page size is valid, default to 10 if not set
     const effectivePageSize = this.pageSize > 0 ? this.pageSize : 10;
@@ -126,7 +157,9 @@ export class ListSchedulesComponent implements OnInit {
       },
       error: () => {
         this.isLoading = false;
-        this.notification.show('Failed to load schedules.', 'Close');
+         if (this.loggedIn) {
+          this.notification.show('Failed to load schedules.', 'Close');
+        }
       }
     });
   }

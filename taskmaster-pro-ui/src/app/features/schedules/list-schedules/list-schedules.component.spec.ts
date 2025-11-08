@@ -37,6 +37,7 @@ class MockExportService {
 class MockAuthService {
   currentUser$ = of({ id: '00000000-0000-0000-0000-000000000001', isAdmin: true });
   isAdmin$ = of(true);
+  isLoggedIn$ = of(true);
   getCurrentUser() {
     return { id: '00000000-0000-0000-0000-000000000001', isAdmin: true };
   }
