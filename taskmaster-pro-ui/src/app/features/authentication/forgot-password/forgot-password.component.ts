@@ -23,6 +23,7 @@ import { RecaptchaModule, RecaptchaFormsModule } from 'ng-recaptcha';
 })
 export class ForgotPasswordComponent {
   forgotForm: FormGroup;
+  submitting = false;
 
   constructor(
     private fb: FormBuilder,
@@ -41,8 +42,10 @@ export class ForgotPasswordComponent {
   }
   
   onSubmit(): void {
-    if (this.forgotForm.invalid)
+    if (this.forgotForm.invalid || this.submitting)
       return;
+
+    this.submitting = true;
 
     const dto: ForgotPasswordDto = {
       email: this.forgotForm.value.email,
@@ -55,6 +58,9 @@ export class ForgotPasswordComponent {
       },
       error: () => {
         this.notification.show('Failed to send reset link.', 'Close');
+      },
+      complete: () => {
+        this.submitting = false;
       }
     });
   }

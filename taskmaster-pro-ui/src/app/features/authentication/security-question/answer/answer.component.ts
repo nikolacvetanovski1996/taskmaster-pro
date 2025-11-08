@@ -52,7 +52,7 @@ export class AnswerComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.answerForm = this.fb.group({
-      securityAnswer: ['', [Validators.required, Validators.minLength(1)]]
+      securityAnswer: ['', [Validators.required, Validators.minLength(3)]]
     });
 
     // Grab from query params
@@ -164,12 +164,14 @@ export class AnswerComponent implements OnInit, OnDestroy {
 
             if (typeof error?.error === 'string' && error.error.trim()) {
               backendMessage = error.error;
+            } else if (error?.error?.errors && Array.isArray(error.error.errors) && error.error.errors.length > 0) {
+              backendMessage = error.error.errors[0];
             } else if (error?.error?.error) {
               backendMessage = error.error.error;
             } else if (error?.error?.message) {
               backendMessage = error.error.message;
-            } else if (error?.error && typeof error.error === 'object') {
-              backendMessage = JSON.stringify(error.error);
+            } else {
+              backendMessage = 'An unknown error occurred';
             }
                 
             if (error?.status === 400) {

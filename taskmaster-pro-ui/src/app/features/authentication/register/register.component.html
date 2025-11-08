@@ -134,7 +134,13 @@
       Please complete the CAPTCHA
     </mat-error>
 
-    <button class="custom-auth-button" color="primary" type="submit" [disabled]="registerForm.invalid">Register</button>
+    <button
+      class="custom-auth-button"
+      color="primary"
+      type="submit"
+      [disabled]="registerForm.invalid || submitting">
+      Register
+    </button>
     <button class="custom-secondary-auth-button" type="button" (click)="cancel()">Cancel</button>
   </form>
 </div>

@@ -27,6 +27,7 @@ export class RegisterComponent implements OnInit {
   passwordStrengthLabel = 'Weak';
   hidePassword = true;
   hideConfirmPassword  = true;
+  submitting = false;
 
   // Predefined security questions
   securityQuestions = [
@@ -95,8 +96,10 @@ export class RegisterComponent implements OnInit {
   }
 
   submit(): void {
-    if (this.registerForm.invalid)
+    if (this.registerForm.invalid || this.submitting)
       return;
+
+    this.submitting = true;
 
     const dto: RegisterDto = {
       firstName: this.registerForm.value.firstName,
@@ -116,6 +119,9 @@ export class RegisterComponent implements OnInit {
       },
       error: () => {
         this.notification.show('Registration failed', 'Close');
+      },
+      complete: () => {
+        this.submitting = false;
       }
     });
   }
