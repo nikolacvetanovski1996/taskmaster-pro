@@ -64,9 +64,10 @@ export class ListSchedulesComponent implements OnInit {
     updatedBy: 'Updated By'
   };
 
-  // Deleting permission / UI state
+  // Editing/deleting permission / UI state
   currentUserId = '';
   currentUserIsAdmin = false;
+  editingId: string | null = null;
   deletingId: string | null = null;
 
   constructor(
@@ -114,7 +115,8 @@ export class ListSchedulesComponent implements OnInit {
       next: res => {
         this.schedules = res.data.map(s => ({
           ...s,
-          canDelete: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId)
+          canDelete: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId),
+          canEdit: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId)
         }));
         this.totalRecords = res.recordsTotal;
         this.isLoading = false;
@@ -150,6 +152,13 @@ export class ListSchedulesComponent implements OnInit {
     this.router.navigate(['/schedules/create']);
   }
 
+  canEdit(schedule: PagedSchedulesViewModel): boolean {
+    return !!(
+      schedule &&
+      (this.currentUserIsAdmin || schedule.createdBy === this.currentUserId)
+    );
+  }
+
   editSchedule(id: string): void {
     this.router.navigate(['/schedules/edit', id]);
   }
@@ -183,12 +192,15 @@ export class ListSchedulesComponent implements OnInit {
 
     this.dialogService.confirm(data).subscribe(confirmed => {
       if (confirmed) {
+        this.deletingId = id;
         this.scheduleService.delete(id).subscribe({
           next: () => {
+            this.deletingId = null;
             this.notification.show('Schedule deleted successfully.');
             this.loadPage();
           },
           error: () => {
+            this.deletingId = null;
             this.notification.show('Could not delete schedule.', 'Close');
           }
         });
