@@ -1,7 +1,7 @@
 <mat-card class="edit-form-card">
   <mat-card-title>Edit Schedule</mat-card-title>
   <mat-card-content>
-    <form [formGroup]="editForm" (ngSubmit)="onSavePointerUp($event)">
+    <form [formGroup]="editForm" (ngSubmit)="onSavePointerUp($event)" (keydown)="onKeydown($event)">
       <mat-form-field appearance="fill" class="full-width">
         <mat-label>Order ID</mat-label>
         <input

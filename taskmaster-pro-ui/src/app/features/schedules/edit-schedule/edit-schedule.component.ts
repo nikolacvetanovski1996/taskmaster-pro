@@ -492,6 +492,19 @@ export class EditScheduleComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Keydown handler to submit on Enter key
+  onKeydown(event: KeyboardEvent) {
+    if (
+      event.key === 'Enter' &&
+      !this.pointerSubmitInProgress &&
+      !this.isSubmitting &&
+      !this.validatingAssigned
+    ) {
+      event.preventDefault();
+      this.onSavePointerUp();
+    }
+  }
+
   // Getters for form controls
   get orderId() {
     return this.editForm.get('orderId')!;
