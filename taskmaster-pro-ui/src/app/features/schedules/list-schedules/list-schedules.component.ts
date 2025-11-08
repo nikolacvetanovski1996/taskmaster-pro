@@ -87,10 +87,13 @@ export class ListSchedulesComponent implements OnInit {
     const currentUser = this.authService.getCurrentUser();
     if (currentUser) {
       this.currentUserId = currentUser.id ?? '';
-      this.currentUserIsAdmin = currentUser.isAdmin;
     }
 
-    this.loadPage();
+    this.authService.isAdmin$.subscribe(isAdmin => {
+      this.currentUserIsAdmin = isAdmin;
+
+      this.loadPage();
+    });
   }
 
   /** Loads the current page of schedules */
@@ -113,7 +116,7 @@ export class ListSchedulesComponent implements OnInit {
 
     this.scheduleService.getPaged(query).subscribe({
       next: res => {
-        this.schedules = res.data.map(s => ({
+          this.schedules = res.data.map(s => ({
           ...s,
           canDelete: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId),
           canEdit: !!(this.currentUserIsAdmin || s.createdBy === this.currentUserId)
