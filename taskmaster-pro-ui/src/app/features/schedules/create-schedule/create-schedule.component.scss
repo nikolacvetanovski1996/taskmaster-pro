@@ -71,3 +71,16 @@ ng-select ::ng-deep .ng-value {
 ::ng-deep .ng-dropdown-panel .ng-option {
   font-size: 17px;
 }
+
+:host ::ng-deep ng-select[disabled] .ng-arrow-wrapper,
+:host ::ng-deep ng-select.ng-select-disabled .ng-arrow-wrapper,
+:host ::ng-deep ng-select[disabled] .ng-clear-wrapper,
+:host ::ng-deep ng-select.ng-select-disabled .ng-clear-wrapper {
+  display: none !important;
+}
+
+:host ::ng-deep ng-select[disabled] .ng-select-container,
+:host ::ng-deep ng-select.ng-select-disabled .ng-select-container {
+  cursor: default !important;
+  box-shadow: none !important;
+}

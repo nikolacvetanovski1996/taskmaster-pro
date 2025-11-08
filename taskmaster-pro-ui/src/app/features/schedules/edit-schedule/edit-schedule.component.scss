@@ -27,47 +27,60 @@
 }
 
 ng-select {
-    background: #4e444b;
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
+  background: #4e444b;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
 
-  ng-select ::ng-deep .ng-value {
-    color: #fff;
-  }
+ng-select ::ng-deep .ng-value {
+  color: #fff;
+}
 
-  ::ng-deep .edit-form-card .ng-dropdown-panel .ng-option {
-    background: #2d292c !important;
-    color: #fff !important;
-  }
+::ng-deep .edit-form-card .ng-dropdown-panel .ng-option {
+  background: #2d292c !important;
+  color: #fff !important;
+}
 
-  .ng-dropdown-panel .ng-option:hover,
-  .ng-dropdown-panel .ng-option.ng-option-marked {
-    background: rgba(255,255,255,0.04) !important;
-  }
+.ng-dropdown-panel .ng-option:hover,
+.ng-dropdown-panel .ng-option.ng-option-marked {
+  background: rgba(255,255,255,0.04) !important;
+}
 
-  ::ng-deep ng-select {
-    display: block;
-    margin-top: 0.25rem;
-    border-radius: 4px;
-  }
+::ng-deep ng-select {
+  display: block;
+  margin-top: 0.25rem;
+  border-radius: 4px;
+}
 
-  ::ng-deep .edit-form-card ng-select .ng-select-container {
-    background: #4e444b !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-  }
-  ::ng-deep .edit-form-card ng-select .ng-placeholder,
-  ::ng-deep .edit-form-card ng-select .ng-value,
-  ::ng-deep .edit-form-card ng-select .ng-single-label,
-  ::ng-deep .edit-form-card ng-select .ng-input input {
-    color: #fff !important;
-  }
+::ng-deep .edit-form-card ng-select .ng-select-container {
+  background: #4e444b !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+}
+::ng-deep .edit-form-card ng-select .ng-placeholder,
+::ng-deep .edit-form-card ng-select .ng-value,
+::ng-deep .edit-form-card ng-select .ng-single-label,
+::ng-deep .edit-form-card ng-select .ng-input input {
+  color: #fff !important;
+}
 
-  ::ng-deep .edit-form-card ng-select .ng-select-container .ng-value,
-  ::ng-deep .edit-form-card ng-select .ng-input input {
-    font-size: 17px;
-  }
+::ng-deep .edit-form-card ng-select .ng-select-container .ng-value,
+::ng-deep .edit-form-card ng-select .ng-input input {
+  font-size: 17px;
+}
 
-  ::ng-deep .ng-dropdown-panel .ng-option {
-    font-size: 17px;
-  }
+::ng-deep .ng-dropdown-panel .ng-option {
+  font-size: 17px;
+}
+
+:host ::ng-deep ng-select[disabled] .ng-arrow-wrapper,
+:host ::ng-deep ng-select.ng-select-disabled .ng-arrow-wrapper,
+:host ::ng-deep ng-select[disabled] .ng-clear-wrapper,
+:host ::ng-deep ng-select.ng-select-disabled .ng-clear-wrapper {
+  display: none !important;
+}
+
+:host ::ng-deep ng-select[disabled] .ng-select-container,
+:host ::ng-deep ng-select.ng-select-disabled .ng-select-container {
+  cursor: default !important;
+  box-shadow: none !important;
+}
