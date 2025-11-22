@@ -45,7 +45,14 @@ describe('RegisterComponent', () => {
     router = new MockRouter();
 
     await TestBed.configureTestingModule({
-      imports: [ReactiveFormsModule, FormsModule, CommonModule, MaterialModule, RecaptchaModule, RegisterComponent],
+      imports: [
+        ReactiveFormsModule,
+        FormsModule,
+        CommonModule,
+        MaterialModule,
+        RecaptchaModule,
+        RegisterComponent
+      ],
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: NotificationService, useValue: notification },

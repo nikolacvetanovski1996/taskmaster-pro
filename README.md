@@ -50,6 +50,7 @@ To illustrate the main features, two short demo videos are provided:
 Provider-specific capabilities (template management, webhooks, analytics, higher throughput, improved deliverability) can be integrated later via provider API/SDK.
 
 **User sessions:** Cached in Redis (StackExchange.Redis) for distributed session support – Redis is an in-memory store often used for caching/scalable session state[7].
+Note: session/request caching can use Redis for distributed sessions. In this repository and the portfolio demo the resend-confirmation cooldown is implemented with `IMemoryCache` (in-memory). That is **acceptable for a single-server/single-instance deployment** (what the demo uses). If you deploy across multiple nodes or need global rate-limits, switch to a distributed cache (e.g. Redis) or a global rate-limiter — `IMemoryCache` will not provide global enforcement across instances.
 **Application configuration:** Managed via `appsettings.json` and environment variables (JWT secret, email SMTP settings, reCAPTCHA secret, etc.).
 **Logging:** Handled by Serilog, writing to console and rolling log files (in a `/Logs` directory).
 
@@ -57,7 +58,14 @@ Provider-specific capabilities (template management, webhooks, analytics, higher
 - **User Management:** Register, email-confirm, login, password reset (with security question and reCAPTCHA), profile update, change password, delete account (soft delete). Admins can list users, change roles, and unlock locked accounts.
 - **Orders & Schedules:** CRUD operations for Orders and Schedules, with ordering and pagination. Each order must have an assigned schedule. Schedules include date/time and assigned user (which for regular users is the same user that created the schedule, while admins can assign any other existing and non-deleted user).
 - **Security Hardening:** Custom exception middleware returns standard error responses on failure. Sensitive fields (passwords, security answers) are hashed. Identity tables have added fields (SecurityQuestion/AnswerHash, lockout fields). I also add `IsDeleted` flags for soft deletes. Database views (`vw_UserRoles` etc.) aggregate user-role info for reporting.
+- **Security-question hardening:** `GetSecurityQuestion` always issues a session token (real or fake) so timing/response shape is consistent. If the email isn’t found the API returns a generic/fake security question (no existence leak). `VerifySecurityAnswer` will also block issuing sensitive tokens for unconfirmed accounts and returns a sentinel code `Code = "EmailNotConfirmed"` when applicable. `ForgotPassword` likewise returns an empty token for unconfirmed emails.
 - **Testing & Quality:** While not including a separate test project in this repo, the design emphasizes testability (dependencies injected via DI, MediatR handlers, clean layering). Static analysis and code reviews ensure quality.
+- **Resend confirmation: flow**  Added POST `/api/Authentication/resend-confirmation-link` which safely resends email confirmation links. Behavior:
+  - Avoids leaking account existence (returns HTTP 200 OK with a generic success message regardless of whether the email exists).
+  - Returns a clear error when the account is already confirmed.
+  - Enforces rate limits: short per-email cooldown (30s) and hourly per-email cap (6/hr) using `IMemoryCache` for demo.
+  - Builds confirmation links using encoded UserId + Base64Url token for frontend consumption.
+  **Note**: The portfolio/demo deployment intentionally uses `IMemoryCache` (per-instance) for resend cooldowns — acceptable for a single-server demo. For multi-node production or global rate-limits you must use a distributed cache (e.g. Redis) or a global rate-limiter.
 
 **Getting Started – Backend:** To run the API locally, you need .NET 9 SDK and SQL Server (or LocalDB). Key steps:
 1. **Configure:** Copy secrets.example.json to secrets.json in the project root in the `taskmaster-pro.WebApi` project and fill in your local credentials. **See Admin Functionality below for local admin credentials and demo instructions.** Required keys include: JWT settings, reCAPTCHA secret, SMTP mail settings, Redis connection, STS Server URL, admin user password, Frontend:BaseUrl, and database connection string (ConnectionStrings:DefaultConnection). The example file contains placeholder values so you can run the project locally without exposing real secrets.
@@ -65,6 +73,12 @@ Provider-specific capabilities (template management, webhooks, analytics, higher
 - **Production:** Use your Upstash Redis TCP connection (format: **hostname:port,password=<token>,ssl=True,abortConnect=False**). This ensures distributed session support without publishing a new version of the app.
 - **Security note:** **Do not commit** `secrets.json` or any file containing real credentials. Keep production secrets in your host's secure configuration (App Service settings, environment variables, or a secret store). `secrets.example.json` should contain **placeholders only**.
 - **Frontend Base URL:** `Frontend:BaseUrl` may be placed in `appsettings.json` as a default **and** overridden by `secrets.json` or environment-specific settings in production (recommended). For local development you can set it to `http://localhost:4200`.
+- The app registers `IMemoryCache` in `Program.cs` - e.g.:
+	```csharp
+	// Program.cs
+	builder.Services.AddMemoryCache();
+	```
+This is used for demo rate-limits/cooldowns. **Switch to a distributed cache (Redis)** in production to enforce global limits across instances.
 2. **Database Migrations:** The app automatically applies migrations at startup via `db.Database.Migrate()` in `Program.cs`. Alternatively, to create/update the schema manually run the following from the `taskmaster-pro.WebApi` folder:
 
    ```powershell
@@ -98,6 +112,7 @@ The project seeds an administrator account on first run using values from config
 - **Never** commit `secrets.json` (real credentials). Ensure `secrets.json` is in `.gitignore`.
 
 ✅ v1.0.1 update: The database now auto-creates on first run; no manual `dotnet ef database update` is required for local setup.
+✅ v1.1 update: Added `resend-confirmation` endpoint + UI + tests (Login & Security-Question flows). Removed automatic resend on ResetPassword; demo rate-limiting implemented via `IMemoryCache` (per-instance) — **the portfolio demo runs with this configuration as a single-instance deployment**. For multi-node or production-grade global rate limiting, use a distributed cache such as Redis.
 
 **Tech Stack – Backend:** .NET 9.0 (ASP.NET Core), C#, Entity Framework Core (Code-First) with SQL Server, MediatR (CQRS), AutoMapper, FluentValidation, ASP.NET Identity (customized), JWT authentication, StackExchange.Redis (caching), Serilog (logging), Swashbuckle/Swagger, AutoBogus (data seeding), and custom Middleware/Filters. The solution is structured into Projects (`.Application`, `.Domain`, `.Infrastructure`, `.WebApi`) illustrating Onion architecture for maintainability and testability.
 
@@ -109,6 +124,11 @@ The project seeds an administrator account on first run using values from config
 
 **UI Components:** I use Angular Material (Google’s Material Design library) for consistent, high-quality UI widgets[8]. The app has custom themes and global SCSS styles for branding. Reusable components include forms (login, register, profiles), data tables for lists (with pagination and sorting), charts for the dashboard, dialogs, and feedback toasts. Notable features:
 - **Authentication Forms:** Standalone, responsive forms for Login, Register, Forgot/Reset Password, and Change Password. Each form has client-side validation (via Angular Reactive Forms and custom validators) and helpful error messages. The Register form and Reset password form include a password strength meter (a Material progress bar) that dynamically evaluates the strength of the entered password. All state-changing auth forms (register, password reset/change) include Google reCAPTCHA v3 widgets (ng-recaptcha) for spam protection – tokens are sent to the API for validation.
+- **Resend confirmation UX**: The UI implements a safe resend-confirmation flow limited to the Login and Security-Question flows:
+  - Login: If a login attempt fails because the email isn’t confirmed, the page shows a neutral banner with a Resend confirmation link button (uses the current email input).
+  - Security Question answer flow: If a user reaches the security-question step and the backend identifies the account as unconfirmed after a successful answer, a banner/dialog allows resending a confirmation link.
+  - Important: The Reset Password page does not automatically offer a resend CTA — password-reset tokens are only issued for confirmed accounts and the reset page handles invalid/expired links by prompting the user to request a new reset through the Forgot Password flow.
+  - Client-side cooldown prevents double-clicks (30s); server-side limits (IMemoryCache demo) are authoritative.
 - **Password Visibility:** Password inputs have a toggle icon to show/hide characters, improving UX on mobile and helping avoid typos.
 - **Dashboard:** A landing dashboard (protected by login) shows quick stats (total orders, schedules, users) in cards, and an orders/schedules chart. I use ng2-charts (Chart.js) for the bar chart of monthly activity, demonstrating data visualization[2]. The dashboard shows a spinner while loading.
 - **Navigation:** The app has a main layout with a toolbar (app title, user menu/logout) and a side nav for routing between features. Routes are protected by auth guards. I also include “Not Found” (404) and “Unauthorized” (403) pages as standalone components, linked via routing for invalid or forbidden access.
@@ -124,8 +144,8 @@ The project seeds an administrator account on first run using values from config
 
 ### ✅ Test Coverage All frontend unit tests executed successfully.
 
-**Results:** 350 specs, all passing (100% success)
-**Coverage:** 82.27% Statements (1448/1760) | 57.96% Branches (324/559) | 86.8% Functions (434/500) | 83.75% Lines (1397/1668)
+**Results:** 376 specs, all passing (100% success)
+**Coverage:** 78.34% Statements (1711/2184) | 54.28% Branches (380/700) | 83.3% Functions (489/587) | 80.46% Lines (1643/2042)
 
 **Getting Started – Frontend:** To launch the UI locally:
 1. **Install Dependencies:**

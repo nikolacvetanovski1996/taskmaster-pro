@@ -157,7 +157,6 @@ describe('ResetPasswordComponent', () => {
   it('should show guidance when reset link is invalid', fakeAsync(() => {
     authService.resetPassword.and.returnValue(throwError(() => new Error('InvalidToken')));
 
-    // Use a valid password that passes the component validators
     component.resetForm.setValue({
       email: 'test@test.com',
       token: 'test-token',

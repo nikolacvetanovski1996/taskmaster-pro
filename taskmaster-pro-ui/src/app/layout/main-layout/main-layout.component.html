@@ -8,17 +8,37 @@
 <!-- Main Layout Component HTML -->
 <mat-sidenav-container class="sidenav-container">
   <!-- Left Sidebar -->
-  <mat-sidenav *ngIf="isLoggedIn$ | async" #sidenav [opened]="isSidenavOpen" class="sidenav glass-sidenav" mode="side">
+  <mat-sidenav
+    *ngIf="isLoggedIn$ | async"
+    #sidenav
+    [opened]="isSidenavOpen"
+    class="sidenav glass-sidenav"
+    [mode]="sidenavMode">
     <mat-nav-list id="app-nav" aria-label="Main navigation">
-      <a mat-list-item routerLink="/dashboard" routerLinkActive="active-link">
+      <a
+        mat-list-item
+        routerLink="/dashboard"
+        routerLinkActive="active-link"
+        (click)="onMenuItemClick()"
+      >
         <mat-icon mat-list-icon>dashboard</mat-icon>
         <span mat-line>Dashboard</span>
       </a>
-      <a mat-list-item routerLink="/orders" routerLinkActive="active-link">
+      <a
+        mat-list-item
+        routerLink="/orders"
+        routerLinkActive="active-link"
+        (click)="onMenuItemClick()"
+      >
         <mat-icon mat-list-icon>receipt_long</mat-icon>
         <span mat-line>Orders</span>
       </a>
-      <a mat-list-item routerLink="/schedules" routerLinkActive="active-link">
+      <a
+        mat-list-item
+        routerLink="/schedules"
+        routerLinkActive="active-link"
+        (click)="onMenuItemClick()"
+      >
         <mat-icon mat-list-icon>schedule</mat-icon>
         <span mat-line>Schedules</span>
       </a>
@@ -34,15 +54,30 @@
           </mat-expansion-panel-header>
 
           <mat-nav-list id="admin-list">
-            <a mat-list-item routerLink="/admin/users" routerLinkActive="active-link">
+            <a
+              mat-list-item
+              routerLink="/admin/users"
+              routerLinkActive="active-link"
+              (click)="onMenuItemClick()"
+            >
               <mat-icon mat-list-icon>people</mat-icon>
               <span mat-line>Users</span>
             </a>
-            <a mat-list-item routerLink="/admin/orders" routerLinkActive="active-link">
+            <a
+              mat-list-item
+              routerLink="/admin/orders"
+              routerLinkActive="active-link"
+              (click)="onMenuItemClick()"
+            >
               <mat-icon mat-list-icon>assignment_turned_in</mat-icon>
               <span mat-line>Orders</span>
             </a>
-            <a mat-list-item routerLink="/admin/schedules" routerLinkActive="active-link">
+            <a
+              mat-list-item
+              routerLink="/admin/schedules"
+              routerLinkActive="active-link"
+              (click)="onMenuItemClick()"
+            >
               <mat-icon mat-list-icon>event_available</mat-icon>
               <span mat-line>Schedules</span>
             </a>

@@ -1,13 +1,13 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { ForgotPasswordComponent } from './forgot-password.component';
-import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { AuthService } from '../services/auth.service';
 import { of, throwError } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { MaterialModule } from '../../../shared/modules/material.module';
-import { RecaptchaModule, RecaptchaFormsModule } from 'ng-recaptcha';
+import { RecaptchaModule } from 'ng-recaptcha';
 
 describe('ForgotPasswordComponent', () => {
   let component: ForgotPasswordComponent;
@@ -27,15 +27,20 @@ describe('ForgotPasswordComponent', () => {
         ReactiveFormsModule,
         MaterialModule,
         RecaptchaModule,
-        RecaptchaFormsModule,
         ForgotPasswordComponent
       ],
       providers: [
         { provide: AuthService, useValue: authSpy },
         { provide: NotificationService, useValue: notifySpy },
-        { provide: Router, useValue: routerSpy },
-        FormBuilder
+        { provide: Router, useValue: routerSpy }
       ]
+    })
+    .overrideComponent(ForgotPasswordComponent, {
+      set: {
+        template: `<form>
+        <!-- Override template with minimal version to isolate component from Recaptcha during tests -->
+        </form>`
+      }
     }).compileComponents();
 
     fixture = TestBed.createComponent(ForgotPasswordComponent);
@@ -48,7 +53,8 @@ describe('ForgotPasswordComponent', () => {
   });
 
   it('should call forgotPassword on submit with valid form', fakeAsync(() => {
-    component.forgotForm.setValue({ email: 'test@example.com', recaptchaToken: 'token123' });
+    component.forgotForm.get('email')!.setValue('test@example.com');
+    component.recaptchaToken = 'token123';
     authSpy.forgotPassword.and.returnValue(of(void 0));
 
     component.onSubmit();
@@ -59,7 +65,8 @@ describe('ForgotPasswordComponent', () => {
   }));
 
   it('should show error notification if forgotPassword fails', fakeAsync(() => {
-    component.forgotForm.setValue({ email: 'fail@example.com', recaptchaToken: 'token123' });
+    component.forgotForm.get('email')!.setValue('fail@example.com');
+    component.recaptchaToken = 'token123';
     authSpy.forgotPassword.and.returnValue(throwError(() => new Error('Error')));
 
     component.onSubmit();
@@ -70,18 +77,20 @@ describe('ForgotPasswordComponent', () => {
 
   it('should patch recaptchaToken on captcha resolved', () => {
     component.onCaptchaResolved('token123');
-    expect(component.forgotForm.value.recaptchaToken).toBe('token123');
+    expect(component.recaptchaToken).toBe('token123');
   });
 
   it('should clear recaptchaToken on captcha null', () => {
     component.onCaptchaResolved(null);
-    expect(component.forgotForm.value.recaptchaToken).toBe('');
+    expect(component.recaptchaToken).toBe('');
   });
 
   it('should not submit if form invalid', fakeAsync(() => {
-    component.forgotForm.setValue({ email: '', recaptchaToken: '' });
+    component.forgotForm.get('email')!.setValue('');
+    component.recaptchaToken = '';
     component.onSubmit();
     tick();
+    
     expect(authSpy.forgotPassword).not.toHaveBeenCalled();
     expect(notifySpy.show).not.toHaveBeenCalled();
   }));

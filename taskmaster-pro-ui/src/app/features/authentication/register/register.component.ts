@@ -28,6 +28,8 @@ export class RegisterComponent implements OnInit {
   hidePassword = true;
   hideConfirmPassword  = true;
   submitting = false;
+
+  // Recaptcha handling
   @ViewChild('captchaRef', { read: RecaptchaComponent, static: false }) captchaRef?: RecaptchaComponent;
   recaptchaToken = '';
   private _isResettingCaptcha = false;
@@ -76,8 +78,7 @@ export class RegisterComponent implements OnInit {
         Validators.required,
         Validators.minLength(3),
         Validators.maxLength(100)
-      ]]//,
-      //recaptchaToken: ['', [Validators.required]]
+      ]]
     }, {
       validators: this.matchPasswords('password', 'confirmPassword')
     });
@@ -236,7 +237,4 @@ export class RegisterComponent implements OnInit {
   get securityAnswer() {
     return this.registerForm.get('securityAnswer')! as FormControl;
   }
-  // get recaptcha() {
-  //   return this.registerForm.get('recaptchaToken')! as FormControl;
-  // }
 }
