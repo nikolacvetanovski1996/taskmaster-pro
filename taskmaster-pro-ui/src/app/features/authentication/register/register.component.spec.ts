@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service';
 import { NotificationService } from '../../../shared/services/notification.service';
 import { CommonModule } from '@angular/common';
 import { MaterialModule } from '../../../shared/modules/material.module';
-import { RecaptchaModule, RecaptchaFormsModule } from 'ng-recaptcha';
+import { RecaptchaModule, RecaptchaFormsModule, RecaptchaComponent } from 'ng-recaptcha';
 
 class MockAuthService {
   register = jasmine.createSpy('register');
@@ -22,15 +22,14 @@ class MockRouter {
   navigate = jasmine.createSpy('navigate');
 }
 
-const registerMock : RegisterDto = {
+const registerMock : Omit<RegisterDto, 'recaptchaToken'> = {
   firstName: 'John',
   lastName: 'Doe',
   email: 'john@doe.com',
   password: 'Password1!',
   confirmPassword: 'Password1!',
   securityQuestion: 'What was your childhood nickname?',
-  securityAnswer: 'Johnny',
-  recaptchaToken: 'token'
+  securityAnswer: 'Johnny'
 }
 
 describe('RegisterComponent', () => {
@@ -46,16 +45,29 @@ describe('RegisterComponent', () => {
     router = new MockRouter();
 
     await TestBed.configureTestingModule({
-      imports: [ReactiveFormsModule, FormsModule, CommonModule, MaterialModule, RecaptchaModule, RecaptchaFormsModule, RegisterComponent],
+      imports: [ReactiveFormsModule, FormsModule, CommonModule, MaterialModule, RecaptchaModule, RegisterComponent],
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: NotificationService, useValue: notification },
         { provide: Router, useValue: router }
       ]
+    })
+    .overrideComponent(RegisterComponent, {
+      set: {
+        template: `<form>
+        <!-- Override template with minimal version to isolate component from Recaptcha during tests -->
+        </form>`
+      }
     }).compileComponents();
 
     fixture = TestBed.createComponent(RegisterComponent);
     component = fixture.componentInstance;
+
+    // Directly assign mock captchaRef (partial mock with reset spy)
+    component.captchaRef = {
+      reset: jasmine.createSpy('reset')
+    } as unknown as RecaptchaComponent;
+
     fixture.detectChanges();
   });
 
@@ -72,14 +84,14 @@ describe('RegisterComponent', () => {
     expect(controls['confirmPassword']).toBeTruthy();
     expect(controls['securityQuestion']).toBeTruthy();
     expect(controls['securityAnswer']).toBeTruthy();
-    expect(controls['recaptchaToken']).toBeTruthy();
   });
 
   it('should not submit invalid form', () => {
     component.registerForm.setValue({
       firstName: '', lastName: '', email: '', password: '', confirmPassword: '',
-      securityQuestion: '', securityAnswer: '', recaptchaToken: ''
+      securityQuestion: '', securityAnswer: ''
     });
+    component.recaptchaToken = '';
     component.submit();
     expect(authService.register).not.toHaveBeenCalled();
   });
@@ -92,17 +104,19 @@ describe('RegisterComponent', () => {
 
   it('should submit valid form and show success notification', () => {
     component.registerForm.setValue(registerMock);
+    component.recaptchaToken = 'token';
     authService.register.and.returnValue(of(void 0));
 
     component.submit();
 
-    expect(authService.register).toHaveBeenCalledWith(registerMock);
+    expect(authService.register).toHaveBeenCalledWith({ ...registerMock, recaptchaToken: 'token' });
     expect(notification.show).toHaveBeenCalledWith('Registration successful. Please check your email to confirm your account.');
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 
   it('should show error notification on register failure', () => {
     component.registerForm.setValue(registerMock);
+    component.recaptchaToken = 'token';
     authService.register.and.returnValue(throwError(() => new Error('Fail')));
 
     component.submit();
@@ -118,9 +132,9 @@ describe('RegisterComponent', () => {
 
   it('should update recaptcha control on captcha resolved', () => {
     component.onCaptchaResolved('token');
-    expect(component.recaptcha.value).toBe('token');
+    expect(component.recaptchaToken).toBe('token');
 
     component.onCaptchaResolved(null);
-    expect(component.recaptcha.value).toBe('');
+    expect(component.recaptchaToken).toBe('');
   });
 });

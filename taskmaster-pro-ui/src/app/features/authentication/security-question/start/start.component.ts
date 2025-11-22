@@ -113,12 +113,15 @@ export class StartComponent implements OnInit, OnDestroy {
           this.captchaResolved = false;
         },
         error: (error) => {
-          const backendMessage = error?.error?.error || error?.error?.message || '';
+          const isCaptchaFailure =
+            error?.status === 400 &&
+            (typeof error?.error === 'string' && error.error.toLowerCase().includes('captcha')
+            || error?.error?.error?.toLowerCase().includes('captcha'));
 
-          if (error?.status === 400) {
-            this.notification.show(backendMessage || 'Invalid input or CAPTCHA failed.', 'Close');
+          if (isCaptchaFailure) {
+            this.notification.show('CAPTCHA validation failed. Please try again.', 'Close');
           } else {
-            this.notification.show('Failed to load security question.', 'Close');
+            this.notification.show('Failed to load security question. Please try again.', 'Close');
           }
 
           this.recaptchaToken = '';

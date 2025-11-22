@@ -4,6 +4,7 @@ using taskmaster_pro.Application.Features.Authentication.Commands.ForgotPassword
 using taskmaster_pro.Application.Features.Authentication.Commands.GetSecurityQuestion;
 using taskmaster_pro.Application.Features.Authentication.Commands.LoginUser;
 using taskmaster_pro.Application.Features.Authentication.Commands.RegisterUser;
+using taskmaster_pro.Application.Features.Authentication.Commands.ResendConfirmation;
 using taskmaster_pro.Application.Features.Authentication.Commands.ResetPassword;
 using taskmaster_pro.Application.Features.Authentication.Commands.VerifySecurityAnswer;
 using taskmaster_pro.Application.Features.Authentication.DTOs;
@@ -95,6 +96,44 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
             return new ConfirmEmailResult { Succeeded = false, Message = "Email confirmation failed." };
         }
 
+        public async Task<ResendConfirmationResult> ResendConfirmationAsync(ResendConfirmationCommand request)
+        {
+            var result = new ResendConfirmationResult
+            {
+                Email = request.Email ?? string.Empty,
+                UserId = null,
+                Token = string.Empty,
+                AlreadyConfirmed = false
+            };
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+                return result;
+
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                // Not found -> token empty, do not leak existence
+                return result;
+            }
+
+            // Set user id and email for controller usage
+            result.UserId = user.Id;
+            result.Email = user.Email;
+
+            if (await _userManager.IsEmailConfirmedAsync(user))
+            {
+                // Already confirmed -> indicate that
+                result.AlreadyConfirmed = true;
+                return result;
+            }
+
+            // User exists and is NOT confirmed -> generate token
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+
+            result.Token = token; // Raw token (controller will encode)
+            return result;
+        }
+
         public async Task<LoginUserResult> LoginUserAsync(LoginUserCommand request)
         {
             var user = await _userManager.FindByEmailAsync(request.Email);
@@ -105,8 +144,8 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
             if (user.IsDeleted)
                 return new LoginUserResult { Succeeded = false, Error = "Account is deactivated.", Code = "AccountDeleted" };
 
-            // Prevent login if user isn't comfirmed yet
-            if (!await _userManager.IsEmailConfirmedAsync(user))
+            // Prevent login if user isn't confirmed yet
+            if (!await _userManager.IsEmailConfirmedAsync(user) && await _userManager.CheckPasswordAsync(user, request.Password))
                 return new LoginUserResult { Succeeded = false, Error = "Email is not confirmed.", Code = "EmailNotConfirmed" };
 
             // Use SignInManager to preserve lockout behavior
@@ -129,6 +168,10 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
             if (user == null)
                 return new ForgotPasswordResult { Email = request.Email, Token = string.Empty };
 
+            // Don't issue password-reset tokens for unconfirmed accounts
+            if (!await _userManager.IsEmailConfirmedAsync(user))
+                return new ForgotPasswordResult { Email = user.Email, Token = string.Empty };
+
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
 
             return new ForgotPasswordResult
@@ -149,6 +192,18 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
                     Errors = new List<IdentityErrorDto>
                     {
                         new IdentityErrorDto { Code = string.Empty, Description = "Invalid request" }
+                    }
+                };
+            }
+
+            if (!await _userManager.IsEmailConfirmedAsync(user))
+            {
+                return new ResetPasswordResult
+                {
+                    Succeeded = false,
+                    Errors = new List<IdentityErrorDto>
+                    {
+                        new IdentityErrorDto { Code = "EmailNotConfirmed", Description = "Email is not confirmed." }
                     }
                 };
             }
@@ -183,10 +238,31 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
         public async Task<GetSecurityQuestionResult?> GetSecurityQuestionAsync(string email)
         {
             var user = await _userManager.FindByEmailAsync(email);
-            if (user == null)
-                return null;
 
+            // Always create a session token (real or fake) so timing/response shape is consistent
             var sessionToken = await _sessionService.CreateSessionAsync(email, expiresInMinutes: 10);
+
+            if (user == null)
+            {
+                // Return a fake / generic security question from the existing options, so the response is indistinguishable
+                var fakeQuestions = new[] {
+                    "What was your childhood nickname?",
+                    "What is the name of your first pet?",
+                    "What is your mother’s maiden name?",
+                    "What was the make of your first car?",
+                    "In what city were you born?"
+                };
+
+                // Pick random but keep deterministic length similar to typical questions:
+                var rng = new Random();
+                var fakeQuestion = fakeQuestions[rng.Next(fakeQuestions.Length)];
+
+                return new GetSecurityQuestionResult
+                {
+                    SecurityQuestion = fakeQuestion,
+                    SessionToken = sessionToken
+                };
+            }
 
             return new GetSecurityQuestionResult
             {
@@ -236,6 +312,17 @@ namespace taskmaster_pro.Infrastructure.Persistence.IdentityServices
                 {
                     Succeeded = false,
                     Errors = new List<string> { "Invalid email or answer." }
+                };
+            }
+
+            // Block issuing reset tokens for accounts that haven't confirmed email
+            if (!await _userManager.IsEmailConfirmedAsync(user))
+            {
+                return new VerifySecurityAnswerResult
+                {
+                    Succeeded = false,
+                    Code = "EmailNotConfirmed",
+                    Errors = new List<string> { "Email is not confirmed." }
                 };
             }
 

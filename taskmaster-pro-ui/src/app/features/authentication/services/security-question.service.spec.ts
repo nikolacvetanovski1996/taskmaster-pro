@@ -73,6 +73,6 @@ describe('SecurityQuestionService', () => {
     service.setUserEmail('a@b.com');
     service.clear();
     expect(service.isQuestionLoaded()).toBeFalse();
-    expect(service.getUserEmail()).toBe('');
+    expect(service.getUserEmail()).toBeNull();
   });
 });

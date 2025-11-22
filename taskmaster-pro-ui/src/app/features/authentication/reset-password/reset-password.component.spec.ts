@@ -56,7 +56,13 @@ describe('ResetPasswordComponent', () => {
     router = new MockRouter();
 
     await TestBed.configureTestingModule({
-      imports: [ReactiveFormsModule, FormsModule, CommonModule, MaterialModule, ResetPasswordComponent],
+      imports: [
+        ReactiveFormsModule,
+        FormsModule,
+        CommonModule,
+        MaterialModule,
+        ResetPasswordComponent
+      ],
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: NotificationService, useValue: notification },
@@ -137,11 +143,34 @@ describe('ResetPasswordComponent', () => {
     component.onSubmit();
     tick();
 
-    expect(notification.show).toHaveBeenCalledWith('Failed to reset password. Link may be expired or invalid.', 'Close');
+    expect(notification.show).toHaveBeenCalledWith(
+      'Failed to reset password. Link may be expired or invalid. Request a new password reset.',
+      'Close'
+    );
   }));
 
   it('should navigate to login on cancel', () => {
     component.cancel();
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
+
+  it('should show guidance when reset link is invalid', fakeAsync(() => {
+    authService.resetPassword.and.returnValue(throwError(() => new Error('InvalidToken')));
+
+    // Use a valid password that passes the component validators
+    component.resetForm.setValue({
+      email: 'test@test.com',
+      token: 'test-token',
+      password: 'Password1!',
+      confirmPassword: 'Password1!'
+    });
+
+    component.onSubmit();
+    tick();
+
+    expect(notification.show).toHaveBeenCalledWith(
+      'Failed to reset password. Link may be expired or invalid. Request a new password reset.',
+      'Close'
+    );
+  }));
 });

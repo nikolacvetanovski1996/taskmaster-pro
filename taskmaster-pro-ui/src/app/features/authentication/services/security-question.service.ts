@@ -46,6 +46,6 @@ export class SecurityQuestionService {
 
   clear(): void {
     this.questionLoaded = false;
-    this.userEmail = '';
+    this.userEmail = null;
   }
 }

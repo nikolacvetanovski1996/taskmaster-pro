@@ -80,6 +80,7 @@ try
     builder.Services.AddSharedInfrastructure(builder.Configuration);
     builder.Services.AddScoped<IUserRoleService, IdentityUserRoleService>();
     builder.Services.AddSessionService(builder.Configuration);
+    builder.Services.AddMemoryCache();
     var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ??
                             builder.Configuration["Redis:Connection"];
     builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>

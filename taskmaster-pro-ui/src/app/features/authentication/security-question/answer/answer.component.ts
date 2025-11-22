@@ -1,15 +1,20 @@
 import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subscription } from 'rxjs';
+import { Subscription, throwError } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 import { FormBuilder, FormGroup, Validators, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { MaterialModule } from '../../../../shared/modules/material.module';
+import { AuthService } from '../../services/auth.service';
 import { NotificationService } from '../../../../shared/services/notification.service';
 import { SecurityQuestionService } from '../../services/security-question.service'
 import { RecaptchaModule, RecaptchaComponent } from 'ng-recaptcha';
 import { SecurityQuestionRequestDto } from '../../models/security-question-request.dto';
 import { VerifySecurityAnswerDto } from '../../models/verify-security-answer.dto';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { ResendConfirmationDto } from '../../models/resend-confirmation.dto';
+import { ResendConfirmationDialogComponent } from '../../resend-confirmation-dialog/resend-confirmation-dialog.component';
+import { ResendDialogData } from '../../models/resend-dialog-data';
 
 @Component({
   selector: 'app-security-question-answer',
@@ -18,6 +23,7 @@ import { VerifySecurityAnswerDto } from '../../models/verify-security-answer.dto
     CommonModule,
     ReactiveFormsModule,
     MaterialModule,
+    MatDialogModule,
     RecaptchaModule
   ],
   templateUrl: './answer.component.html',
@@ -37,6 +43,11 @@ export class AnswerComponent implements OnInit, OnDestroy {
   securityQuestion = '';
   sessionToken: string = '';
 
+  // Resend confirmation state
+  isResendDisabled = false;
+  resendCooldownSeconds = 0;
+  private resendInterval?: ReturnType<typeof setInterval>;
+
   @ViewChild('captchaRef') captchaRef?: RecaptchaComponent;
 
   private destroyed = false;
@@ -44,10 +55,12 @@ export class AnswerComponent implements OnInit, OnDestroy {
 
   constructor(
     private fb: FormBuilder,
+    private authService: AuthService,
     private securityQuestionService: SecurityQuestionService,
     private notification: NotificationService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    public dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
@@ -111,6 +124,10 @@ export class AnswerComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.subs.unsubscribe();
     this.destroyed = true;
+    if (this.resendInterval) {
+      clearInterval(this.resendInterval);
+      this.resendInterval = undefined;
+    }
   }
 
   onCaptchaResolved(token: string | null): void {
@@ -160,6 +177,14 @@ export class AnswerComponent implements OnInit, OnDestroy {
             this.clearCaptchaLocal();
           },
           error: (error: any) => {
+            // Check for EmailNotConfirmed sentinel (403)
+            if (error?.status === 403 && error?.error?.code === 'EmailNotConfirmed') {
+              this.handleEmailNotConfirmed(this.emailToUse);
+              this.clearCaptchaLocal();
+              this.tryWidgetReset();
+              return;
+            }
+
             let backendMessage = '';
 
             if (typeof error?.error === 'string' && error.error.trim()) {
@@ -189,6 +214,101 @@ export class AnswerComponent implements OnInit, OnDestroy {
           }
         })
     );
+  }
+
+  handleEmailNotConfirmed(email: string) {
+    const data: ResendDialogData = 
+    {
+      isResendDisabled: this.isResendDisabled,
+      resendCooldownSeconds: this.resendCooldownSeconds
+    };
+
+    const dialogRef  = this.dialog.open(ResendConfirmationDialogComponent, {
+      width: '420px',
+      data: data
+    });
+
+    dialogRef.afterClosed().subscribe((result: any) => {
+      if (!result?.confirmed) {
+        return;
+      }
+    });
+
+    const s = dialogRef.componentInstance.resend.subscribe((captchaToken: string) => {
+      const dto: ResendConfirmationDto = {
+        email: email,
+        recaptchaToken: captchaToken
+      };
+
+      dialogRef.componentInstance.isLoading = true;
+      dialogRef.disableClose = true;
+
+      const apiSub = this.resendConfirmationLink(dto).subscribe({
+        next: () => {
+          this.startResendCooldown();
+          this.notification.show('If the email is registered and unconfirmed, a confirmation link has been sent.');
+          dialogRef.close({ confirmed: true });
+        },
+         error: (err) => {
+          if (err?.status === 429) {
+            this.notification.show(err?.error?.error ?? 'Too many requests. Try again later.', 'Close');
+
+            const cooldown = 30;
+
+            // START THE DIALOG’S COOLDOWN
+            dialogRef.componentInstance.startCooldown(cooldown);
+
+            dialogRef.componentInstance.isLoading = false;
+            dialogRef.disableClose = false;
+
+            dialogRef.componentInstance.resetCaptcha();
+            return;
+          } else if (err?.status === 400 && err?.error?.error) {
+            this.notification.show(err.error.error, 'Close');
+          } else {
+            this.notification.show('Failed to send confirmation link. Try again later.', 'Close');
+          }
+
+          dialogRef.componentInstance.isLoading = false;
+          dialogRef.disableClose = false;
+
+          dialogRef.componentInstance.resetCaptcha();
+        }
+      });
+      this.subs.add(apiSub);
+    })
+    this.subs.add(s);
+  }
+
+  resendConfirmationLink(dto: ResendConfirmationDto) {
+    if (!dto.recaptchaToken) {
+      return throwError(() => new Error('CAPTCHA token missing'));
+    }
+
+    return this.authService.resendConfirmationLink(dto);
+  }
+
+  startResendCooldown() {
+    if (this.resendInterval) {
+      clearInterval(this.resendInterval);
+    }
+
+    // Defensive: ensure there is a positive counter
+    if (!this.resendCooldownSeconds || this.resendCooldownSeconds <= 0) {
+      this.resendCooldownSeconds = 30;
+    }
+
+    this.resendInterval = setInterval(() => {
+      this.resendCooldownSeconds--;
+      if (this.resendCooldownSeconds <= 0) {
+        if (this.resendInterval) {
+          clearInterval(this.resendInterval);
+          this.resendInterval = undefined;
+        }
+        this.isResendDisabled = false;
+        this.resendCooldownSeconds = 0;
+      }
+    }, 1000);
   }
 
   goBack(): void {

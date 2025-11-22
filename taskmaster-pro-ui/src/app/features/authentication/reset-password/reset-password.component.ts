@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
+import { Subscription } from 'rxjs';
+import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MaterialModule } from '../../../shared/modules/material.module';
 import { NotificationService } from '../../../shared/services/notification.service';
@@ -18,12 +19,14 @@ import { ResetPasswordDto } from '../models/reset-password.dto';
   templateUrl: './reset-password.component.html',
   styleUrls: ['./reset-password.component.scss']
 })
-export class ResetPasswordComponent implements OnInit {
+export class ResetPasswordComponent implements OnInit, OnDestroy {
   resetForm!: FormGroup;
   passwordStrength: number = 0; // 0–100 scale
   passwordStrengthLabel = 'Weak';
   hideNewPassword = true;
   hideConfirmPassword = true;
+
+  private subs = new Subscription();
 
   constructor(
     private fb: FormBuilder,
@@ -82,6 +85,10 @@ export class ResetPasswordComponent implements OnInit {
     });
   }
 
+  ngOnDestroy(): void {
+    this.subs.unsubscribe();
+  }
+
   onSubmit(): void {
     const password = this.resetForm.get('password')?.value;
     const confirmPassword = this.resetForm.get('confirmPassword')?.value;
@@ -103,17 +110,28 @@ export class ResetPasswordComponent implements OnInit {
       token
     };
 
-    this.authService.resetPassword(dto).subscribe({
+    const sub = this.authService.resetPassword(dto).subscribe({
       next: () => {
         this.notification.show('Password reset successful.');
         this.router.navigate(['/login']);
       },
-      error: () => {
-        this.notification.show('Failed to reset password. Link may be expired or invalid.', 'Close');
+      error: (err: any) => {
+        // If server returned explicit "Invalid request" or similar (user missing): suggest requesting new reset
+        if (err?.status === 400 && (typeof err.error === 'string' && err.error.includes('Invalid request')
+            || err?.error?.errors?.some((e: any) => typeof e === 'string' && e.includes('Invalid request')))) {
+          // Show friendly guidance and a CTA (user can go to forgot-password)
+          this.notification.show('Reset failed. The reset link looks invalid or expired. Request a new password reset.', 'Close');
+          return;
+        }
+
+        // Default fallback: generic invalid token message + suggest new reset
+        this.notification.show('Failed to reset password. Link may be expired or invalid. Request a new password reset.', 'Close');
       }
     });
-  }
 
+    this.subs.add(sub);
+  }
+  
   cancel(): void {
     this.router.navigate(['/login']);
   }

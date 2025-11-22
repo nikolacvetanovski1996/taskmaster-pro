@@ -1,0 +1,62 @@
+:host {
+  display: block;
+  min-width: 300px;
+}
+
+:host ::ng-deep re-captcha,
+:host ::ng-deep re-captcha > div {
+  display: block;
+  line-height: 0;
+}
+
+.mat-dialog-container {
+  max-width: 420px !important;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+  background-color: #ffffff;
+}
+
+.mat-dialog-title, .auth-dialog h2 {
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #d35400;
+}
+
+.mat-error {
+  color: #a00000;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+.mat-dialog-content {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #d35400;
+  font-weight: 700;
+}
+
+mat-dialog-actions {
+  margin-top: 1rem;
+  button {
+    margin-left: 0.5rem;
+  }
+}
+
+re-captcha {
+  display: block;
+  margin: 16px 0;
+}
+
+.inline-spinner {
+  vertical-align: middle;
+  margin-right: 8px;
+}

@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Caching.Memory;
 using System.Linq;
 using System.Text;
 using taskmaster_pro.Application.Features.Authentication.Commands.ConfirmEmail;
@@ -7,6 +8,7 @@ using taskmaster_pro.Application.Features.Authentication.Commands.ForgotPassword
 using taskmaster_pro.Application.Features.Authentication.Commands.GetSecurityQuestion;
 using taskmaster_pro.Application.Features.Authentication.Commands.LoginUser;
 using taskmaster_pro.Application.Features.Authentication.Commands.RegisterUser;
+using taskmaster_pro.Application.Features.Authentication.Commands.ResendConfirmation;
 using taskmaster_pro.Application.Features.Authentication.Commands.ResetPassword;
 using taskmaster_pro.Application.Features.Authentication.Commands.VerifySecurityAnswer;
 using taskmaster_pro.Application.Features.Authentication.DTOs;
@@ -26,7 +28,7 @@ namespace Controllers
         private readonly IRecaptchaValidator _captchaValidator;
         private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
-        private readonly ILogger<AuthenticationController> _logger;
+        private readonly IMemoryCache _cache;
 
         #endregion
 
@@ -38,14 +40,14 @@ namespace Controllers
             IRecaptchaValidator captchaValidator,
             IConfiguration configuration,
             IMapper mapper,
-            ILogger<AuthenticationController> logger)
+            IMemoryCache cache)
         {
             _mediator = mediator;
             _emailSender = emailSender;
             _captchaValidator = captchaValidator;
             _configuration = configuration;
             _mapper = mapper;
-            _logger = logger;
+            _cache = cache;
         }
 
         #endregion
@@ -105,6 +107,76 @@ namespace Controllers
                 return BadRequest(new { error = result.Message });
         }
 
+        // Resends email confirmation link with rate limiting
+        [HttpPost("resend-confirmation-link")]
+        public async Task<IActionResult> ResendConfirmationLink([FromBody] ResendConfirmationDto model)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            // Check if the captcha is valid
+            if (!await IsCaptchaValid(model.RecaptchaToken))
+                return BadRequest(new { error = "CAPTCHA validation failed." });
+
+            var normalizedEmail = model.Email?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (string.IsNullOrEmpty(normalizedEmail))
+                return Ok();
+
+            var emailCooldownKey = $"resend:cooldown:{normalizedEmail}";
+            var emailHourlyKey = $"resend:hourly:{normalizedEmail}";
+
+            // 1) Per-email short cooldown (30s)
+            if (_cache.TryGetValue(emailCooldownKey, out _))
+                return StatusCode(429, new { error = "Too many requests. Try again shortly." });
+
+            // 2) Per-email hourly limit (6 per hour)
+            var hourlyCount = _cache.Get<int?>(emailHourlyKey) ?? 0;
+            if (hourlyCount >= 6)
+                return StatusCode(429, new { error = "Hourly limit reached. Try again later." });
+
+            // Send command via MediatR -> handler calls auth service that uses UserManager
+            var command = _mapper.Map<ResendConfirmationCommand>(model);
+            var result = await _mediator.Send(command);
+
+            // If user not found (Token empty and !AlreadyConfirmed) -> set cooldown and return neutral OK
+            if (string.IsNullOrEmpty(result?.Token))
+            {
+                _cache.Set(emailCooldownKey, true, TimeSpan.FromSeconds(30));
+                _cache.Set(emailHourlyKey, hourlyCount + 1, TimeSpan.FromHours(1));
+                return Ok(new { Message = "If the email is registered and unconfirmed, a confirmation link will be sent." });
+            }
+
+            // At this point token is present -> send email
+            try
+            {
+                // Encode user ID and token for frontend URL
+                var encodedUserId = Uri.EscapeDataString(result.UserId!);
+                var encodedToken = Uri.EscapeDataString(result.Token);
+
+                var frontendBase = _configuration["Frontend:BaseUrl"]!;
+
+                var confirmationLink = $"{frontendBase}/email-confirmation" +
+                    $"?userId={encodedUserId}" +
+                    $"&token={encodedToken}";
+
+                // Build HTML and send email
+                var html = EmailTemplates.GetEmailConfirmationTemplate(confirmationLink);
+                await _emailSender.SendEmailAsync(result.Email, "Confirm your email", html);
+            }
+            catch (Exception ex)
+            {
+                // Set short cooldown to avoid repeated hammering
+                _cache.Set(emailCooldownKey, true, TimeSpan.FromSeconds(30));
+                return StatusCode(500, new { error = "Failed to send confirmation link. Try again later." });
+            }
+
+            // Set cooldown and hourly counter
+            _cache.Set(emailCooldownKey, true, TimeSpan.FromSeconds(30));
+            _cache.Set(emailHourlyKey, hourlyCount + 1, TimeSpan.FromHours(1));
+
+            return Ok(new { Message = "If the email is registered and unconfirmed, a confirmation link has been sent." });
+        }
+
         // Validates credentials and returns JWT token for successful login
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginDto model)
@@ -120,7 +192,7 @@ namespace Controllers
                 if (result.Code == "EmailNotConfirmed")
                     return StatusCode(403, new { code = result.Code, error = result.Error });
 
-                return Unauthorized(result.Error);
+                return Unauthorized(new { error = result.Error });
             }
 
             return Ok(new { result.Token });
@@ -160,9 +232,7 @@ namespace Controllers
                     await _emailSender.SendEmailAsync(result.Email, "Password Reset Request", html);
                 }
                 catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send password reset email for {Email}", model.Email);
-                }
+                { }
             }
 
             return Ok(new { Message = "If your email is registered and confirmed, you will receive a password reset link." });
@@ -191,6 +261,11 @@ namespace Controllers
             if (result.Succeeded)
                 return Ok(new { Message = "Password has been reset successfully" });
 
+            if (result.Errors?.Any(e => e.Code == "EmailNotConfirmed") == true)
+            {
+                return StatusCode(403, new { code = "EmailNotConfirmed", error = "Email is not confirmed." });
+            }
+
             if (result.Errors?.Count == 1 && result.Errors[0].Description == "Invalid request")
                 return BadRequest("Invalid request");
 
@@ -211,9 +286,6 @@ namespace Controllers
             var command = _mapper.Map<GetSecurityQuestionCommand>(model);
             var result = await _mediator.Send(command);
 
-            if (result == null)
-                return BadRequest(new { error = "Invalid email or answer." });
-
             return Ok(new { securityQuestion = result.SecurityQuestion, sessionToken = result.SessionToken });
         }
 
@@ -233,9 +305,15 @@ namespace Controllers
 
             if (!result.Succeeded)
             {
+                // Explicit handling for unconfirmed email so frontend can show CTA
+                if (!string.IsNullOrEmpty(result.Code) && result.Code == "EmailNotConfirmed")
+                    return StatusCode(403, new { code = "EmailNotConfirmed", error = result.Errors?.FirstOrDefault() ?? "Email is not confirmed." });
+
+                // Lockout behavior
                 if (result.LockoutWaitMinutes.HasValue)
                     return StatusCode(429, result.Errors.First());
 
+                // Default: invalid answer
                 return BadRequest(new { error = "Invalid email or answer." });
             }
 

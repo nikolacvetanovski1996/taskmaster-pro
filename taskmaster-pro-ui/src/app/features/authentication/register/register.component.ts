@@ -1,12 +1,13 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, NgZone  } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators, FormGroup, FormControl } from '@angular/forms';
+import { finalize } from 'rxjs';
 import { Router } from '@angular/router';
 import { MaterialModule } from '../../../shared/modules/material.module';
 import { RegisterDto } from '../models/register.dto';
 import { AuthService } from '../services/auth.service';
 import { NotificationService } from '../../../shared/services/notification.service';
-import { RecaptchaModule, RecaptchaFormsModule } from 'ng-recaptcha';
+import { RecaptchaModule, RecaptchaComponent } from 'ng-recaptcha';
 
 @Component({
   selector: 'app-register',
@@ -15,8 +16,7 @@ import { RecaptchaModule, RecaptchaFormsModule } from 'ng-recaptcha';
     CommonModule,
     ReactiveFormsModule,
     MaterialModule,
-    RecaptchaModule,
-    RecaptchaFormsModule
+    RecaptchaModule
   ],
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss']
@@ -28,6 +28,9 @@ export class RegisterComponent implements OnInit {
   hidePassword = true;
   hideConfirmPassword  = true;
   submitting = false;
+  @ViewChild('captchaRef', { read: RecaptchaComponent, static: false }) captchaRef?: RecaptchaComponent;
+  recaptchaToken = '';
+  private _isResettingCaptcha = false;
 
   // Predefined security questions
   securityQuestions = [
@@ -42,7 +45,8 @@ export class RegisterComponent implements OnInit {
     private fb: FormBuilder,
     private authService: AuthService,
     private notification: NotificationService,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -72,8 +76,8 @@ export class RegisterComponent implements OnInit {
         Validators.required,
         Validators.minLength(3),
         Validators.maxLength(100)
-      ]],
-      recaptchaToken: ['', [Validators.required]]
+      ]]//,
+      //recaptchaToken: ['', [Validators.required]]
     }, {
       validators: this.matchPasswords('password', 'confirmPassword')
     });
@@ -99,6 +103,15 @@ export class RegisterComponent implements OnInit {
     if (this.registerForm.invalid || this.submitting)
       return;
 
+    // Require captcha token
+    if (!this.recaptchaToken) {
+      this.registerForm.setErrors({ captchaMissing: true });
+      this.notification.show('Please complete the captcha', 'Close');
+      return;
+    } else if (this.registerForm.hasError('captchaMissing')) {
+      this.registerForm.setErrors(null);
+    }
+
     this.submitting = true;
 
     const dto: RegisterDto = {
@@ -109,21 +122,29 @@ export class RegisterComponent implements OnInit {
       confirmPassword: this.registerForm.value.confirmPassword,
       securityQuestion: this.registerForm.value.securityQuestion,
       securityAnswer: this.registerForm.value.securityAnswer,
-      recaptchaToken: this.registerForm.value.recaptchaToken
+      recaptchaToken: this.recaptchaToken
     };
 
-    this.authService.register(dto).subscribe({
-      next: () => {
-        this.notification.show('Registration successful. Please check your email to confirm your account.');
-        this.router.navigate(['/login']);
-      },
-      error: () => {
-        this.notification.show('Registration failed', 'Close');
-      },
-      complete: () => {
-        this.submitting = false;
-      }
-    });
+    this.authService.register(dto)
+      .pipe(finalize(() => {
+        // Run outside angular then schedule next tick
+        this.ngZone.runOutsideAngular(() => setTimeout(() => this.ngZone.run(() => {
+          this.submitting = false;
+        }), 0));
+      }))
+      .subscribe({
+        next: () => {
+          this.notification.show('Registration successful. Please check your email to confirm your account.');
+          this._clearRecaptchaTokenAndWidget();
+          this.router.navigate(['/login']);
+        },
+        error: () => {
+          this.notification.show('Registration failed', 'Close');
+
+          // Reset widget + form value
+          this.resetRecaptchaWidget();
+        }
+      });
   }
 
   cancel(): void {
@@ -150,14 +171,48 @@ export class RegisterComponent implements OnInit {
     if (/[\W_]/.test(pw)) score += 10;                 // symbols
     return Math.min(score, 100);
   }
-
+  
+  // Handle recaptcha resolution
   onCaptchaResolved(token: string | null) {
-    if (token) {
-      this.registerForm.patchValue({ recaptchaToken: token });
-    }
-    else {
-      this.registerForm.patchValue({ recaptchaToken: '' });
-    }
+    if (this._isResettingCaptcha) return;
+    this.recaptchaToken = token ?? '';
+  }
+
+  // Handle recaptcha expiration
+  onCaptchaExpired() {
+    if (this._isResettingCaptcha) return;
+    this.recaptchaToken = '';
+  }
+
+  // Reset the recaptcha widget
+  private resetRecaptchaWidget() {
+    if (this._isResettingCaptcha) return;
+    this._isResettingCaptcha = true;
+
+    // Clear token field
+    this.recaptchaToken = '';
+
+    this.ngZone.runOutsideAngular(() => {
+      setTimeout(() => {
+        try {
+          this.ngZone.run(() => {
+            if (this.captchaRef && typeof this.captchaRef.reset === 'function') {
+              this.captchaRef.reset();
+            } else {
+              try { (window as any)?.grecaptcha?.reset?.(); } catch (_) {}
+            }
+          });
+        } finally {
+          this._isResettingCaptcha = false;
+        }
+      }, 0);
+    });
+  }
+
+  // Clear recaptcha token and reset widget
+  private _clearRecaptchaTokenAndWidget() {
+    this.recaptchaToken = '';
+    setTimeout(() => this.resetRecaptchaWidget(), 0);
   }
 
   get firstName() {
@@ -181,7 +236,7 @@ export class RegisterComponent implements OnInit {
   get securityAnswer() {
     return this.registerForm.get('securityAnswer')! as FormControl;
   }
-  get recaptcha() {
-    return this.registerForm.get('recaptchaToken')! as FormControl;
-  }
+  // get recaptcha() {
+  //   return this.registerForm.get('recaptchaToken')! as FormControl;
+  // }
 }

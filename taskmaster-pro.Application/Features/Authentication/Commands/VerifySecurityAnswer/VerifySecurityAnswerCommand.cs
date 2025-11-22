@@ -13,5 +13,6 @@
         public string? ResetToken { get; set; }
         public double? LockoutWaitMinutes { get; set; }
         public IList<string>? Errors { get; set; } = new List<string>();
+        public string? Code { get; set; }
     }
 }

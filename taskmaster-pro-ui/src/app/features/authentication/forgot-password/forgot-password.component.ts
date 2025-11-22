@@ -53,8 +53,9 @@ export class ForgotPasswordComponent {
     };
 
     this.authService.forgotPassword(dto).subscribe({
-      next: () => {
-        this.notification.show('Reset link sent to your email.');
+      next: (res: any) => {
+        const msg = res?.Message ?? 'If your email is registered and confirmed, you will receive a password reset link.';
+        this.notification.show(msg);
       },
       error: () => {
         this.notification.show('Failed to send reset link.', 'Close');

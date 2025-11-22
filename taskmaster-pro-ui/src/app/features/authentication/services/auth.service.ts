@@ -10,6 +10,7 @@ import { ResetPasswordDto } from '../models/reset-password.dto';
 import { ConfirmEmailDto } from '../models/confirm-email.dto';
 import { ProfileDto } from '../models/profile.dto';
 import { ChangePasswordDto } from '../models/change-password.dto';
+import { ResendConfirmationDto } from '../models/resend-confirmation.dto';
 import { environment } from '../../../../environments/environment';
 import { jwtDecode } from 'jwt-decode';
 
@@ -38,11 +39,7 @@ export class AuthService {
         this.isLoggedInSubject.next(true);
       }),
       catchError((err: HttpErrorResponse) => {
-        if (err.status === 403 && err.error?.code === 'EmailNotConfirmed') {
-          return throwError(() => new Error('EmailNotConfirmed'));
-        }
-        const msg = err.error?.error || 'Invalid credentials';
-        return throwError(() => new Error(msg));
+        return throwError(() => err);
       })
     )
   };
@@ -62,6 +59,12 @@ export class AuthService {
   confirmEmail(dto: ConfirmEmailDto): Observable<void> {
     return this.http.post<void>(
       `${this.apiUrl}/Authentication/confirm-email`, dto
+    );
+  }
+
+  resendConfirmationLink(dto: ResendConfirmationDto): Observable<any> {
+    return this.http.post<void>(
+      `${this.apiUrl}/Authentication/resend-confirmation-link`, dto
     );
   }
   

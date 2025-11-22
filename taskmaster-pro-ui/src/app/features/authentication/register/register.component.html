@@ -129,8 +129,13 @@
       </mat-error>
     </mat-form-field>
 
-    <re-captcha formControlName="recaptchaToken" siteKey="6Ld2Sn4rAAAAAAV0mHtku7lKdrXrXbZSlEd1aA0q" (resolved)="onCaptchaResolved($event)"></re-captcha>
-    <mat-error *ngIf="recaptcha.invalid && recaptcha.touched">
+    <re-captcha
+      #captchaRef="reCaptcha"
+      siteKey="6Ld2Sn4rAAAAAAV0mHtku7lKdrXrXbZSlEd1aA0q"
+      (resolved)="onCaptchaResolved($event)"
+      (expired)="onCaptchaExpired()">
+    </re-captcha>
+    <mat-error *ngIf="registerForm.hasError('captchaMissing')">
       Please complete the CAPTCHA
     </mat-error>
 
@@ -138,9 +143,15 @@
       class="custom-auth-button"
       color="primary"
       type="submit"
-      [disabled]="registerForm.invalid || submitting">
+      [disabled]="registerForm.invalid || !recaptchaToken || submitting">
       Register
     </button>
-    <button class="custom-secondary-auth-button" type="button" (click)="cancel()">Cancel</button>
+    <button
+      class="custom-secondary-auth-button"
+      type="button"
+      [disabled]="submitting"
+      (click)="cancel()">
+      Cancel
+    </button>
   </form>
 </div>

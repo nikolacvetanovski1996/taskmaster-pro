@@ -1,0 +1,37 @@
+<h2 mat-dialog-title>Email not confirmed</h2>
+
+<mat-dialog-content>
+  <p>Password reset is disabled until your email is confirmed.</p>
+  <p>If you'd like a new confirmation link, complete the CAPTCHA below to resend it.</p>
+
+  <re-captcha
+    siteKey="6Ld2Sn4rAAAAAAV0mHtku7lKdrXrXbZSlEd1aA0q"
+    (resolved)="onCaptchaResolved($event)"
+    (expired)="onCaptchaExpired()"
+  ></re-captcha>
+
+  <mat-error *ngIf="captchaError">Please complete the CAPTCHA.</mat-error>
+
+  <div *ngIf="isResendDisabled" class="cooldown-warning">
+    Please wait {{ resendCooldownSeconds }} seconds before trying again.
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="onCancel()" [disabled]="isLoading">Cancel</button>
+  <button
+    mat-button
+    color="warn"
+    [disabled]="!captchaResolved || isResendDisabled || isLoading"
+    (click)="onResend()"
+  >
+    <mat-progress-spinner
+      *ngIf="isLoading"
+      [diameter]="18"
+      mode="indeterminate"
+      strokeWidth="2"
+      class="inline-spinner"
+    ></mat-progress-spinner>
+    <span *ngIf="!isLoading">Resend</span>
+  </button>
+</mat-dialog-actions>

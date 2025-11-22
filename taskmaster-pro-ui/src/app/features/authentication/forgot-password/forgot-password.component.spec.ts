@@ -55,7 +55,7 @@ describe('ForgotPasswordComponent', () => {
     tick();
 
     expect(authSpy.forgotPassword).toHaveBeenCalledWith({ email: 'test@example.com', recaptchaToken: 'token123' });
-    expect(notifySpy.show).toHaveBeenCalledWith('Reset link sent to your email.');
+    expect(notifySpy.show).toHaveBeenCalledWith('If your email is registered and confirmed, you will receive a password reset link.');
   }));
 
   it('should show error notification if forgotPassword fails', fakeAsync(() => {
