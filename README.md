@@ -138,13 +138,13 @@ The project seeds an administrator account on first run using values from config
 
 **Styling & Assets:** Custom global SCSS and Angular Material theming provide a professional look. The app includes a custom favicon and consistent branding colors. All layouts are designed mobile-first, adjusting to various screen sizes (e.g. form width, margins via media queries).
 
-**Testing:** The front-end includes extensive unit tests (using Jasmine/Karma) with 47 specs covering components, services, guards, utils, modules and validators. I focus on core functionality rather than trying to hit 100% coverage. Current test coverage is ~83% (statements) with all main paths verified. These tests serve as documentation of component behavior and help ensure stability during refactoring. (To run tests: `ng test --code-coverage`, which also generates coverage reports.)
+**Testing:** The front-end includes extensive unit tests (using Jasmine/Karma) with 48 specs covering components, services, guards, utils, modules and validators. I focus on core functionality rather than trying to hit 100% coverage. Current test coverage is ~78% (statements) with all main paths verified. These tests serve as documentation of component behavior and help ensure stability during refactoring. (To run tests: `ng test --code-coverage`, which also generates coverage reports.)
 
 ![Test Coverage](docs/coverage-screenshot.png)
 
 ### ✅ Test Coverage All frontend unit tests executed successfully.
 
-**Results:** 376 specs, all passing (100% success)
+**Results:** 376 tests, all passing (100% success)
 **Coverage:** 78.34% Statements (1711/2184) | 54.28% Branches (380/700) | 83.3% Functions (489/587) | 80.46% Lines (1643/2042)
 
 **Getting Started – Frontend:** To launch the UI locally:
