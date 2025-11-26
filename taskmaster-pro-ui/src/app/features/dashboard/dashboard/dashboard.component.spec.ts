@@ -45,10 +45,10 @@ describe('DashboardComponent', () => {
     // act: triggers ngOnInit + loadDashboard
     fixture.detectChanges();
 
-    // assert: barChartLabels length equals current month index + 1
+    // assert: barChartLabels are the full 12 months
     const now = new Date();
-    expect(component.barChartLabels.length).toBe(now.getMonth() + 1);
-    expect(component.fullMonthLabels.length).toBe(now.getMonth() + 1);
+    expect(component.barChartLabels.length).toBe(12);
+    expect(component.fullMonthLabels.length).toBe(12);
     expect(component.isLoading).toBeFalse(); // data finished loading
   });
 

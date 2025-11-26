@@ -103,7 +103,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Build labels up to the current month for initial loading UI
     const now = new Date();
     const currentYear = now.getFullYear();
-    const lastMonth = now.getMonth();
+    const lastMonth = 11; // zero-based index for December
 
     this.buildLabelsUpTo(lastMonth, currentYear);
 
@@ -157,7 +157,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             ]
           };
 
-          // Sum displayed months only (Jan–current month)
+          // Sum displayed months (Jan–Dec)
           this.displayedOrders = ordersData.reduce((a, b) => a + b, 0);
           this.displayedSchedules = schedulesData.reduce((a, b) => a + b, 0);
 
