@@ -23,10 +23,10 @@ TaskmasterPro is a modern task and scheduling management application, featuring 
 
 To illustrate the main features, two short demo videos are provided:
 
-- 🎥 **User Demo (Core Functionality):** [Watch on YouTube](https://youtu.be/<user-demo-id>)
+- 🎥 **User Demo (Core Functionality):** [Watch on YouTube](https://youtu.be/PVK60qk6a6U)
   - Shows registration, login, dashboard, orders, and schedules.
 
-- 🎥 **Admin Demo (Advanced Features):** [Watch on YouTube](https://youtu.be/<admin-demo-id>)
+- 🎥 **Admin Demo (Advanced Features):** [Watch on YouTube](https://youtu.be/NOU8oSUIJV8)
   - Shows admin login, user management, role editing, and order/schedule control.
 
 > Full live admin access is disabled for security. The admin demo illustrates all restricted features.
@@ -166,6 +166,11 @@ The project seeds an administrator account on first run using values from config
 - **Deployment:** The API can be hosted on any .NET-compatible host. I use the free tier of Azure App Service for demonstration (Azure offers always-free hosting options for small apps[9]). The Angular app can be built and served via Azure Static Web Apps or any static hosting. (No custom domain is needed for dev; you can point DNS later if desired.)
 - **Documentation:** Swagger (OpenAPI) is integrated – after running the API, the Swagger UI is available at `/swagger`. This documents all endpoints, request/response models, and authentication schemes.
 - **Future Work:** Features like email templates, additional user roles, and enhanced error logging are all structured in so they can be extended. The architecture easily allows adding new modules (e.g. a messaging system or another entity) by following the existing patterns.
+
+### Known limitation: timestamps in CSV / Excel exports
+
+Exported **Created** and **Updated** timestamps are generated on the server and are **not converted to the user's local timezone**. 
+They are provided in server time (UTC) and may appear different depending on your local timezone. If you need local-time values, convert the exported ISO timestamps using your spreadsheet app or a quick script (e.g. Excel `= (A2) + TIMEZONE_OFFSET`).
 
 ---
 
