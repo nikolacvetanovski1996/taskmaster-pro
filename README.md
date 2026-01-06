@@ -23,10 +23,10 @@ TaskmasterPro is a modern task and scheduling management application, featuring 
 
 To illustrate the main features, two short demo videos are provided:
 
-- 🎥 **User Demo (Core Functionality):** [Watch on YouTube](https://youtu.be/PVK60qk6a6U)
+- 🎥 **User Demo (Core Functionality):** [Watch on Vimeo](https://vimeo.com/1145824935?fl=ip&fe=ec)
   - Shows registration, login, dashboard, orders, and schedules.
 
-- 🎥 **Admin Demo (Advanced Features):** [Watch on YouTube](https://youtu.be/NOU8oSUIJV8)
+- 🎥 **Admin Demo (Advanced Features):** [Watch on Vimeo](https://vimeo.com/1145825632?fl=ip&fe=ec)
   - Shows admin login, user management, role editing, and order/schedule control.
 
 > Full live admin access is disabled for security. The admin demo illustrates all restricted features.
