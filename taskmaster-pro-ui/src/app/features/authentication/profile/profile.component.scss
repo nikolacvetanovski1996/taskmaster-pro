@@ -22,3 +22,9 @@
     color: #fff;
   }
 }
+
+@media (max-width: 599px) {
+  .cancel-btn {
+    margin-bottom: 8px;
+  }
+}
